@@ -1,64 +1,65 @@
-"""Thread pool for async command processing."""
-import threading
+"""Fixed-size daemon thread pool for background tasks."""
 import queue
-from typing import Callable, Any
+import threading
+from typing import Callable, List
+
 from core.logger import logger
 
+
 class WorkerPool:
-    """Lightweight thread pool for task distribution."""
-    
-    def __init__(self, num_workers: int = 3):
+    """Distributes callables across a fixed number of daemon threads."""
+
+    def __init__(self, num_workers: int = 3) -> None:
         self.log = logger.get_logger("WorkerPool")
-        self.task_queue: queue.Queue = queue.Queue()
-        self.workers = []
-        self.running = False
         self.num_workers = num_workers
-    
-    def start(self):
-        """Start worker threads."""
-        if self.running:
+        self._queue: queue.Queue = queue.Queue()
+        self._workers: List[threading.Thread] = []
+        self._running = False
+
+    def start(self) -> None:
+        """Spawn worker threads."""
+        if self._running:
             return
-        
-        self.running = True
+        self._running = True
         for i in range(self.num_workers):
-            worker = threading.Thread(target=self._worker_loop, daemon=True)
-            worker.start()
-            self.workers.append(worker)
-        
-        self.log.info(f"Started {self.num_workers} workers")
-    
-    def stop(self):
-        """Stop all workers."""
-        self.running = False
-        for _ in self.workers:
-            self.task_queue.put(None)  # Sentinel
-        
-        for worker in self.workers:
-            worker.join(timeout=1)
-        
+            t = threading.Thread(
+                target=self._loop, daemon=True, name=f"Worker-{i}"
+            )
+            t.start()
+            self._workers.append(t)
+        self.log.info("Started %d workers", self.num_workers)
+
+    def stop(self) -> None:
+        """Signal all workers to exit and wait for them."""
+        self._running = False
+        for _ in self._workers:
+            self._queue.put(None)  # wake each blocked worker
+        for t in self._workers:
+            t.join(timeout=1.0)
+        self._workers.clear()
         self.log.info("Workers stopped")
-    
+
     def submit(self, func: Callable, *args, **kwargs) -> bool:
-        """Submit task to pool."""
+        """Enqueue a callable. Returns False if the queue is full."""
         try:
-            self.task_queue.put((func, args, kwargs), timeout=1)
+            self._queue.put((func, args, kwargs), timeout=1.0)
             return True
         except queue.Full:
-            self.log.warning("Task queue full")
+            self.log.warning("Task queue full — task dropped")
             return False
-    
-    def _worker_loop(self):
-        """Worker thread main loop."""
-        while self.running:
+
+    def _loop(self) -> None:
+        while self._running:
             try:
-                task = self.task_queue.get(timeout=0.5)
-                if task is None:  # Shutdown signal
-                    break
-                
-                func, args, kwargs = task
-                try:
-                    func(*args, **kwargs)
-                except Exception as e:
-                    self.log.error(f"Task error: {e}")
+                task = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
+
+            if task is None:  # shutdown sentinel
+                break
+
+            func, args, kwargs = task
+            try:
+                func(*args, **kwargs)
+            except Exception as exc:
+                self.log.error("Task error: %s", exc)

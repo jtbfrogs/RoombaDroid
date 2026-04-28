@@ -1,200 +1,218 @@
-"""Optimized voice processing with caching and pooling."""
-import speech_recognition as sr
-import pyttsx3
+"""Speech recognition, TTS output, and LLM-backed conversation."""
 import json
 import threading
-from typing import Optional, Tuple
 from pathlib import Path
+from typing import Dict, List, Optional
+
+import pyttsx3
+import speech_recognition as sr
+
 from core.logger import logger
 from utils.config import config
 
 try:
     from ollama import Client as OllamaClient
-    OLLAMA_AVAILABLE = True
+    _OLLAMA = True
 except ImportError:
-    OLLAMA_AVAILABLE = False
+    _OLLAMA = False
+
 
 class VoiceProcessor:
-    """Fast voice input/output with LLM integration."""
-    
-    def __init__(self):
+    """Handles microphone input, text-to-speech output, and LLM responses.
+
+    * ``listen()``       — blocks until speech is heard (or timeout).
+    * ``speak()``        — fires-and-forgets; returns immediately.
+    * ``get_response()`` — queries the local Ollama LLM.
+    * ``parse_command()``— maps plain-language phrases to movement commands.
+    """
+
+    _COMMAND_MAP: Dict[str, List[str]] = {
+        "FORWARD":  ["go forward", "move forward", "forward", "let's go"],
+        "BACKWARD": ["go back", "move back", "back", "reverse"],
+        "LEFT":     ["turn left", "go left", "left"],
+        "RIGHT":    ["turn right", "go right", "right"],
+        "STOP":     ["stop", "halt", "freeze", "wait"],
+    }
+
+    def __init__(self) -> None:
         self.log = logger.get_logger("VoiceProcessor")
-        
-        # Speech recognition
-        try:
-            self.recognizer = sr.Recognizer()
-            self.recognizer.energy_threshold = config.get("voice.recognizer_energy_threshold", 300)
-            self.recognizer.dynamic_energy_threshold = True
-            self.recognizer.pause_threshold = config.get("voice.recognizer_pause_threshold", 2.3)
-        except Exception as e:
-            self.log.error(f"Recognizer init error: {e}")
-            self.recognizer = None
-        
-        # Text-to-speech
-        try:
-            self.engine = pyttsx3.init()
-            voices = self.engine.getProperty('voices')
-            if voices:
-                self.engine.setProperty('voice', voices[0].id)
-            self.engine.setProperty('rate', config.get("voice.tts_rate", 230))
-            self.engine.setProperty('volume', config.get("voice.tts_volume", 1.0))
-        except Exception as e:
-            self.log.error(f"TTS engine init error: {e}")
-            self.engine = None
-        
-        # LLM (non-blocking init)
-        self.llm_client: Optional[OllamaClient] = None
-        self.llm_model = config.get("llm.model", "neural-chat")
-        
-        if OLLAMA_AVAILABLE:
-            try:
-                self.llm_client = OllamaClient()
-                self.log.info("✓ Ollama LLM available")
-            except Exception as e:
-                self.log.warning(f"Ollama unavailable: {e}")
-        else:
-            self.log.warning("Ollama not installed (pip install ollama)")
-        
-        # Chat history
-        self.chat_history = []
-        self.chat_history_file = Path("data/chat_history.json")
-        self._load_chat_history()
-        
-        # Personality
+
+        self._recognizer  = self._init_recognizer()
+        self._engine      = self._init_tts()
+        self._llm         = self._init_llm()
+        self._speak_lock  = threading.Lock()
+
+        self.llm_model     = config.get("llm.model", "neural-chat")
         self.system_prompt = self._build_system_prompt()
-        
-        # Threading
-        self._speak_lock = threading.Lock()
-    
+
+        self.chat_history: List[Dict] = []
+        self._history_file = Path("data/chat_history.json")
+        self._load_history()
+
+    # ------------------------------------------------------------------
+    # Initialisation helpers
+    # ------------------------------------------------------------------
+
+    def _init_recognizer(self) -> Optional[sr.Recognizer]:
+        try:
+            rec = sr.Recognizer()
+            rec.energy_threshold      = config.get("voice.recognizer_energy_threshold", 300)
+            rec.dynamic_energy_threshold = True
+            rec.pause_threshold       = config.get("voice.recognizer_pause_threshold", 2.3)
+            return rec
+        except Exception as exc:
+            self.log.error("Recognizer init failed: %s", exc)
+            return None
+
+    def _init_tts(self) -> Optional[pyttsx3.Engine]:
+        try:
+            engine = pyttsx3.init()
+            voices = engine.getProperty("voices")
+            if voices:
+                engine.setProperty("voice", voices[0].id)
+            engine.setProperty("rate",   config.get("voice.tts_rate", 230))
+            engine.setProperty("volume", config.get("voice.tts_volume", 1.0))
+            return engine
+        except Exception as exc:
+            self.log.error("TTS init failed: %s", exc)
+            return None
+
+    def _init_llm(self) -> Optional["OllamaClient"]:
+        if not _OLLAMA:
+            self.log.warning("Ollama not installed — run: pip install ollama")
+            return None
+        try:
+            client = OllamaClient()
+            self.log.info("✓ Ollama LLM available")
+            return client
+        except Exception as exc:
+            self.log.warning("Ollama unavailable: %s", exc)
+            return None
+
     def _build_system_prompt(self) -> str:
-        """Build personality prompt."""
+        name = config.get("droid.name", "friend")
         return (
             "You are D O, a shy, loyal, awkward droid. "
             "Speak in short, broken sentences. "
             "Be casual and soft-spoken. "
             "Don't use special characters. "
             "Never sound like an AI assistant. "
-            f"Call them {config.get('droid.name', 'friend')}."
+            f"Call them {name}."
         )
-    
-    def speak(self, text: str, timeout: float = 10.0):
-        """Convert text to speech (thread-safe, non-blocking)."""
-        if not text or not text.strip() or not self.engine:
+
+    # ------------------------------------------------------------------
+    # Speech output
+    # ------------------------------------------------------------------
+
+    def speak(self, text: str) -> None:
+        """Speak *text* asynchronously; returns immediately."""
+        if not text or not text.strip() or not self._engine:
             return
-        
-        def speak_thread():
+
+        def _run() -> None:
             with self._speak_lock:
                 try:
-                    self.log.debug(f"Speaking: {text[:50]}...")
-                    # Use a timeout to prevent hang
-                    try:
-                        self.engine.say(text)
-                        self.engine.runAndWait()
-                    except Exception as e:
-                        self.log.error(f"TTS error: {e}")
-                except Exception as e:
-                    self.log.error(f"Speak error: {e}")
-        
-        # Run in background thread to avoid blocking
-        import threading
-        thread = threading.Thread(target=speak_thread, daemon=True)
-        thread.daemon = True
-        thread.start()
-        
-        # Don't wait for completion - just start and return
-    
+                    self._engine.say(text)
+                    self._engine.runAndWait()
+                except Exception as exc:
+                    self.log.error("TTS error: %s", exc)
+
+        threading.Thread(target=_run, daemon=True, name="SpeakThread").start()
+
+    # ------------------------------------------------------------------
+    # Speech input
+    # ------------------------------------------------------------------
+
     def listen(self, timeout: float = 5.0) -> Optional[str]:
-        """Listen for speech input."""
-        if not self.recognizer:
+        """Block until speech is heard; return transcribed text or None."""
+        if not self._recognizer:
             self.log.warning("Recognizer not available")
             return None
-        
+
         try:
             with sr.Microphone() as source:
-                self.log.debug("Listening...")
-                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=10)
-            
-            try:
-                text = self.recognizer.recognize_google(audio)
-                self.log.info(f"Heard: {text}")
-                return text
-            except sr.UnknownValueError:
-                self.log.warning("Could not understand")
-                return None
-            except sr.RequestError as e:
-                self.log.error(f"Speech service error: {e}")
-                return None
-        except Exception as e:
-            self.log.error(f"Microphone error: {e}")
-            return None
-    
+                self.log.debug("Listening (timeout=%.1fs)…", timeout)
+                audio = self._recognizer.listen(
+                    source, timeout=timeout, phrase_time_limit=10
+                )
+            text = self._recognizer.recognize_google(audio)
+            self.log.info("Heard: %s", text)
+            return text
+        except sr.UnknownValueError:
+            self.log.debug("Could not understand audio")
+        except sr.RequestError as exc:
+            self.log.error("Speech service error: %s", exc)
+        except Exception as exc:
+            self.log.error("Microphone error: %s", exc)
+        return None
+
+    # ------------------------------------------------------------------
+    # LLM
+    # ------------------------------------------------------------------
+
     def get_response(self, user_input: str) -> str:
-        """Get LLM response."""
-        if not self.llm_client:
+        """Query the LLM and return a personality-driven reply."""
+        if not self._llm:
             return "I cannot think right now."
-        
+
         try:
             messages = [
-                {"role": "system", "content": self.system_prompt},
-                *self.chat_history[-10:],  # Last 10 messages
-                {"role": "user", "content": user_input}
+                {"role": "system",    "content": self.system_prompt},
+                *self.chat_history[-10:],
+                {"role": "user",      "content": user_input},
             ]
-            
-            response = self.llm_client.chat(
-                model=self.llm_model,
-                messages=messages,
-                stream=False
-            )
-            
-            response_text = response.get('message', {}).get('content', "I... I don't know.")
-            
-            # Add to history
-            self.chat_history.append({"role": "user", "content": user_input})
-            self.chat_history.append({"role": "assistant", "content": response_text})
-            
-            # Keep manageable
+            raw = self._llm.chat(model=self.llm_model, messages=messages, stream=False)
+
+            # Support both dict-style and object-style Ollama responses
+            if isinstance(raw, dict):
+                reply = raw.get("message", {}).get("content", "")
+            else:
+                reply = getattr(getattr(raw, "message", None), "content", "")
+            reply = reply.strip() or "I… I don't know."
+
+            self.chat_history.append({"role": "user",      "content": user_input})
+            self.chat_history.append({"role": "assistant", "content": reply})
+
+            # Keep history bounded at 100 messages
             if len(self.chat_history) > 100:
                 self.chat_history = self.chat_history[-100:]
-            
-            self._save_chat_history()
-            return response_text
-        except Exception as e:
-            self.log.error(f"LLM error: {e}")
+
+            self._save_history()
+            return reply
+
+        except Exception as exc:
+            self.log.error("LLM error: %s", exc)
             return "Something went wrong."
-    
-    def _load_chat_history(self):
-        """Load chat history from file."""
-        try:
-            if self.chat_history_file.exists():
-                with open(self.chat_history_file) as f:
-                    self.chat_history = json.load(f)
-                self.log.info(f"Loaded {len(self.chat_history)} history items")
-        except Exception as e:
-            self.log.warning(f"Could not load history: {e}")
-    
-    def _save_chat_history(self):
-        """Save chat history to file."""
-        try:
-            self.chat_history_file.parent.mkdir(exist_ok=True)
-            with open(self.chat_history_file, 'w') as f:
-                json.dump(self.chat_history, f)
-        except Exception as e:
-            self.log.error(f"Could not save history: {e}")
-    
+
+    # ------------------------------------------------------------------
+    # Command parsing
+    # ------------------------------------------------------------------
+
     def parse_command(self, text: str) -> Optional[str]:
-        """Parse text for commands."""
-        text_lower = text.lower()
-        
-        commands = {
-            "FORWARD": ["go forward", "move forward", "forward", "let's go"],
-            "BACKWARD": ["go back", "move back", "back", "reverse"],
-            "LEFT": ["turn left", "go left", "left"],
-            "RIGHT": ["turn right", "go right", "right"],
-            "STOP": ["stop", "halt", "freeze", "wait"],
-        }
-        
-        for cmd, patterns in commands.items():
-            if any(p in text_lower for p in patterns):
+        """Return a movement keyword if a known phrase is found in *text*."""
+        lower = text.lower()
+        for cmd, phrases in self._COMMAND_MAP.items():
+            if any(p in lower for p in phrases):
                 return cmd
-        
         return None
+
+    # ------------------------------------------------------------------
+    # Chat history persistence
+    # ------------------------------------------------------------------
+
+    def _load_history(self) -> None:
+        try:
+            if self._history_file.exists():
+                with self._history_file.open() as f:
+                    self.chat_history = json.load(f)
+                self.log.info("Loaded %d history entries", len(self.chat_history))
+        except Exception as exc:
+            self.log.warning("Could not load chat history: %s", exc)
+
+    def _save_history(self) -> None:
+        try:
+            self._history_file.parent.mkdir(parents=True, exist_ok=True)
+            with self._history_file.open("w") as f:
+                json.dump(self.chat_history, f)
+        except Exception as exc:
+            self.log.error("Could not save chat history: %s", exc)

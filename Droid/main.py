@@ -1,102 +1,83 @@
 #!/usr/bin/env python3
-"""
-DROID SYSTEM v3.0
-Improved Star Wars-like Droid on Roomba with optimizations for performance and maintainability.
-"""
-
-import sys
-import time
+"""DROID SYSTEM v3.0 — entry point."""
 import signal
+import sys
+import threading
+import time
 from pathlib import Path
 
-# Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.logger import logger as logger_manager
+from core.logger import logger as log_manager
 from core.controller import DroidController
 
-def print_banner():
-    """Display welcome banner."""
-    print("""
-    ╔════════════════════════════════════════════════════════════╗
-    ║                  DROID SYSTEM v3.0                         ║
-    ║          Star Wars-like Roomba Droid (Enhanced)            ║
-    ║                                                            ║
-    ║  Features:                                                ║
-    ║  • Async command processing  • Lazy module loading       ║
-    ║  • Frame skipping vision     • Optimized Roomba I/O      ║
-    ║  • Worker pool threading     • Better error recovery     ║
-    ╚════════════════════════════════════════════════════════════╝
-    """)
+_BANNER = """
+╔════════════════════════════════════════════════════════════╗
+║                  DROID SYSTEM v3.0                         ║
+║          Star Wars-like Roomba Droid (Enhanced)            ║
+║                                                            ║
+║  • Async command processing    • Lazy module loading       ║
+║  • Frame-skipping vision       • Optimised Roomba I/O      ║
+║  • Worker-pool threading       • Graceful error recovery   ║
+╚════════════════════════════════════════════════════════════╝
+"""
 
-def main():
-    """Main entry point."""
-    global droid
-    droid = None
-    
-    print_banner()
-    
-    # Initialize logging
-    logger_manager.init("logs")
-    log = logger_manager.get_logger("main")
-    
-    # Shutdown flag for signal handler
-    shutdown_event = []
-    
-    # Signal handler - quick exit
-    def signal_handler(sig, frame):
-        print("\n\n[!] Ctrl+C received - shutting down...")
-        shutdown_event.append(True)
-        
-        # Give shutdown 3 seconds max
+
+def main() -> None:
+    print(_BANNER)
+
+    log_manager.init("logs")
+    log = log_manager.get_logger("main")
+
+    droid: DroidController | None = None
+    shutdown_requested = threading.Event()
+
+    def shutdown(sig=None, frame=None) -> None:
+        """Handle Ctrl-C / SIGINT cleanly."""
+        if shutdown_requested.is_set():
+            return  # already shutting down
+        shutdown_requested.set()
+        print("\n[!] Shutting down…")
+
         if droid:
-            import threading
-            def force_stop():
+            # Force-exit if graceful shutdown stalls after 3 s
+            def force_exit() -> None:
                 time.sleep(3)
-                if droid and droid.running:
-                    print("[!] Force-stopping unresponsive components...")
-                    # Force set running to False to exit main loop
-                    droid.running = False
-            
-            stopper = threading.Thread(target=force_stop, daemon=True)
-            stopper.start()
-            
+                print("[!] Force exit triggered")
+                sys.exit(1)
+
+            threading.Thread(target=force_exit, daemon=True).start()
+
             try:
                 droid.stop()
-            except Exception as e:
-                log.error(f"Error during shutdown: {e}")
-        
+            except Exception as exc:
+                log.error("Error during shutdown: %s", exc)
+
         sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    
+
+    signal.signal(signal.SIGINT, shutdown)
+
     try:
-        # Initialize controller
         droid = DroidController()
         droid.start()
-        
-        log.info("Droid ready! Press Ctrl+C to shutdown")
-        
-        # Main loop
-        while droid.running and not shutdown_event:
+        log.info("Droid ready. Press Ctrl+C to shut down.")
+
+        while droid.running and not shutdown_requested.is_set():
             try:
-                # Process queued commands
                 droid.process_commands(timeout=0.1)
                 time.sleep(0.05)
-            except KeyboardInterrupt:
-                signal_handler(None, None)
-                break
-            except Exception as e:
-                log.error(f"Loop error: {e}")
-    
-    except Exception as e:
-        log.critical(f"Fatal error: {e}", exc_info=True)
+            except Exception as exc:
+                log.error("Main loop error: %s", exc)
+
+    except Exception as exc:
+        log.critical("Fatal error: %s", exc, exc_info=True)
         if droid:
             try:
                 droid.stop()
-            except:
+            except Exception:
                 pass
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
