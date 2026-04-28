@@ -24,6 +24,12 @@ _BANNER = """
 
 
 def main() -> None:
+    # Force UTF-8 on Windows consoles (default is cp1252, which rejects
+    # characters like ✓ and box-drawing glyphs used in log messages).
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+
     print(_BANNER)
 
     log_manager.init("logs")
