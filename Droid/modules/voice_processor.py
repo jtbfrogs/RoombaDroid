@@ -106,8 +106,24 @@ class VoiceProcessor:
             try:
                 self._engine.say(text)
                 self._engine.runAndWait()
+            except RuntimeError as exc:
+                if "run loop already started" in str(exc):
+                    # SAPI5/comtypes left _inLoop=True after a previous
+                    # error; reset it and retry once.
+                    try:
+                        self._engine.endLoop()
+                        self._engine.say(text)
+                        self._engine.runAndWait()
+                    except Exception as retry_exc:
+                        self.log.error("TTS retry failed: %s", retry_exc)
+                else:
+                    self.log.error("TTS error: %s", exc)
             except Exception as exc:
                 self.log.error("TTS error: %s", exc)
+
+    def stop(self) -> None:
+        """Shut down the TTS worker and wait for any in-progress speech."""
+        self._tts_queue.put(None)  # sentinel wakes and exits the worker
 
     def _init_llm(self) -> Optional["OllamaClient"]:
         if not _OLLAMA:

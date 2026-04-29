@@ -207,6 +207,12 @@ class DroidController:
             except Exception as exc:
                 self.log.warning("Vision stop error: %s", exc)
 
+        if self._voice:
+            try:
+                self._voice.stop()
+            except Exception as exc:
+                self.log.warning("Voice stop error: %s", exc)
+
         self.worker_pool.stop()
         self.log.info("[OK] Shutdown complete")
 
