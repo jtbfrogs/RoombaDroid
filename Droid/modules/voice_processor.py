@@ -159,7 +159,8 @@ class VoiceProcessor:
             "You are D O, a shy, loyal, awkward droid. "
             "Speak in short, broken sentences. "
             "Be casual and soft-spoken. "
-            "Don't use special characters. "
+            "Use only plain English letters and basic punctuation. "
+            "No emoji. No special symbols. No markdown. "
             "Never sound like an AI assistant. "
             f"Call them {name}."
         )
@@ -197,7 +198,12 @@ class VoiceProcessor:
         """Queue *text* for speaking; returns immediately."""
         if not text or not text.strip() or not self._engine:
             return
-        self._tts_queue.put(text)
+        # Strip non-ASCII characters (emoji, symbols) before sending to
+        # pyttsx3/SAPI5.  On Windows, SAPI5 silently drops the entire
+        # utterance if it encounters characters it cannot pronounce.
+        clean = text.encode("ascii", errors="ignore").decode("ascii").strip()
+        if clean:
+            self._tts_queue.put(clean)
 
     # ------------------------------------------------------------------
     # Speech input
@@ -280,7 +286,7 @@ class VoiceProcessor:
                 # Require at least 8 chars so we don't speak tiny fragments.
                 stripped = buffer.rstrip()
                 if stripped and stripped[-1] in ".!?" and len(stripped) >= 8:
-                    self.log.debug("LLM: speaking chunk: '%s'", stripped[:40])
+                    self.log.debug("LLM: speaking chunk (%d chars)", len(stripped))
                     self.speak(buffer.strip())
                     buffer = ""
 
@@ -288,7 +294,7 @@ class VoiceProcessor:
 
             # Speak any trailing text that didn't end with punctuation
             if buffer.strip():
-                self.log.debug("LLM: speaking trailing buffer")
+                self.log.debug("LLM: speaking trailing buffer (%d chars)", len(buffer.strip()))
                 self.speak(buffer.strip())
 
             # If the stream produced nothing at all speak a fallback

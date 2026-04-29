@@ -233,6 +233,11 @@ class DroidController:
         if self._voice:
             self._voice.calibrate()
 
+        # Test TTS so the operator knows audio output is working
+        if self._voice and self._voice._engine:
+            self._voice.speak("Droid online. All systems ready.")
+            self.log.info("Voice  : TTS test queued")
+
         self.log.info("Hardware initialization complete")
 
     def start(self) -> None:
