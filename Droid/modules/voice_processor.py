@@ -266,6 +266,48 @@ class VoiceProcessor:
         except Exception as exc:
             self.log.warning("Beep failed: %s", exc)
 
+    def log_audio_devices(self) -> None:
+        """Log all detected audio input and output devices."""
+        self.log.info("--- Audio devices ---")
+
+        # Output devices via pyaudio
+        try:
+            import pyaudio
+            pa = pyaudio.PyAudio()
+            outputs = []
+            inputs  = []
+            default_out = pa.get_default_output_device_info()
+            default_in  = pa.get_default_input_device_info()
+
+            for i in range(pa.get_device_count()):
+                info = pa.get_device_info_by_index(i)
+                if info["maxOutputChannels"] > 0:
+                    marker = " <- DEFAULT" if i == default_out["index"] else ""
+                    outputs.append(f"  [{i}] {info['name']}{marker}")
+                if info["maxInputChannels"] > 0:
+                    marker = " <- DEFAULT" if i == default_in["index"] else ""
+                    inputs.append(f"  [{i}] {info['name']}{marker}")
+            pa.terminate()
+
+            self.log.info("Output devices (%d):", len(outputs))
+            for line in outputs:
+                self.log.info(line)
+            self.log.info("Input devices (%d):", len(inputs))
+            for line in inputs:
+                self.log.info(line)
+
+        except Exception as exc:
+            self.log.warning("Could not enumerate audio devices: %s", exc)
+
+        # Confirm which mic index speech_recognition will use
+        mic_index = config.get("voice.microphone_index")
+        if mic_index is None:
+            self.log.info("Microphone: using system default (set voice.microphone_index to override)")
+        else:
+            self.log.info("Microphone: index %s (from config)", mic_index)
+
+        self.log.info("--- End audio devices ---")
+
     def calibrate(self, duration: float = 1.0) -> None:
         """Calibrate energy threshold for the current ambient noise level.
 
@@ -277,7 +319,8 @@ class VoiceProcessor:
         if not self._recognizer:
             return
         try:
-            with sr.Microphone() as source:
+            mic_index = config.get("voice.microphone_index")
+            with sr.Microphone(device_index=mic_index) as source:
                 self.log.info("Calibrating microphone for ambient noise (%.1fs)...", duration)
                 self._recognizer.adjust_for_ambient_noise(source, duration=duration)
                 self.log.info(
@@ -312,7 +355,8 @@ class VoiceProcessor:
             self.log.warning("Recognizer not available")
             return None
         try:
-            with sr.Microphone() as source:
+            mic_index = config.get("voice.microphone_index")  # None = system default
+            with sr.Microphone(device_index=mic_index) as source:
                 self.log.debug("Listening (timeout=%.1fs)...", timeout)
                 audio = self._recognizer.listen(
                     source, timeout=timeout, phrase_time_limit=10

@@ -233,6 +233,10 @@ class DroidController:
         if self._voice:
             self._voice.calibrate()
 
+        # Log audio devices so the operator can see what is detected
+        if self._voice:
+            self._voice.log_audio_devices()
+
         # Set system volume from config if specified
         if self._voice:
             vol = config.get("voice.system_volume")

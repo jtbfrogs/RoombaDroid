@@ -120,9 +120,17 @@ class VisionProcessor:
 
     def _loop(self) -> None:
         while self.running and self._cap:
-            ret, frame = self._cap.read()
+            try:
+                ret, frame = self._cap.read()
+            except Exception as exc:
+                self.log.error("Camera read error: %s  -  stopping vision", exc)
+                self.running = False
+                break
+
             if not ret:
-                continue
+                self.log.warning("Camera returned no frame  -  stopping vision")
+                self.running = False
+                break
 
             self._frame_count += 1
             if self._frame_count % self.frame_skip != 0:

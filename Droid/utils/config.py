@@ -70,6 +70,7 @@ class Config:
                 "tts_volume": 1.0,
                 "language": "en-US",
                 "system_volume": 90,
+                "microphone_index": None,
             },
             "llm": {
                 "model": "neural-chat",
