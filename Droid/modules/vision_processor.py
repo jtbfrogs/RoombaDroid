@@ -50,19 +50,25 @@ class VisionProcessor:
         self._pose_detector = None
         self._face_detector = None
         if _MEDIAPIPE:
-            conf = config.get("vision.min_detection_confidence", 0.5)
-            try:
-                self._pose_detector = mp.solutions.pose.Pose(
-                    min_detection_confidence=conf
-                )
-                self._face_detector = mp.solutions.face_detection.FaceDetection(
-                    min_detection_confidence=conf
-                )
-                self.log.info("[OK] MediaPipe detectors loaded")
-            except Exception as exc:
+            if not hasattr(mp, 'solutions'):
                 self.log.warning(
-                    "MediaPipe init failed (%s)  -  falling back to cascade only", exc
+                    "MediaPipe installed but solutions API unavailable "
+                    "(version too new)  -  using cascade only"
                 )
+            else:
+                conf = config.get("vision.min_detection_confidence", 0.5)
+                try:
+                    self._pose_detector = mp.solutions.pose.Pose(
+                        min_detection_confidence=conf
+                    )
+                    self._face_detector = mp.solutions.face_detection.FaceDetection(
+                        min_detection_confidence=conf
+                    )
+                    self.log.info("[OK] MediaPipe detectors loaded")
+                except Exception as exc:
+                    self.log.warning(
+                        "MediaPipe init failed (%s)  -  using cascade only", exc
+                    )
 
         self._init_camera()
 
@@ -71,6 +77,13 @@ class VisionProcessor:
     # ------------------------------------------------------------------
 
     def _init_camera(self) -> None:
+        # Suppress OpenCV's C++ backend probing messages (FFMPEG, obsensor
+        # etc.) that go directly to stderr and bypass Python logging.
+        try:
+            cv2.setLogLevel(6)  # 6 = LOG_LEVEL_SILENT
+        except Exception:
+            pass
+
         try:
             cap = cv2.VideoCapture(self.camera_index)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.frame_width)
@@ -80,9 +93,9 @@ class VisionProcessor:
                 self._cap = cap
                 self.log.info("[OK] Camera %d initialised", self.camera_index)
             else:
-                self.log.error("[FAIL] Camera %d failed to open", self.camera_index)
+                self.log.warning("Camera %d not available", self.camera_index)
         except Exception as exc:
-            self.log.error("Camera init error: %s", exc)
+            self.log.warning("Camera init error: %s", exc)
 
     def start(self) -> None:
         """Start the background capture loop."""
