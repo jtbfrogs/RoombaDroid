@@ -1,6 +1,12 @@
 """Camera capture and object detection with configurable frame skipping."""
+import os
 import threading
 from typing import Dict, List, Optional, Tuple
+
+# Must be set before cv2 is imported - OpenCV reads this env var when the
+# shared library loads.  Setting it at runtime via cv2.setLogLevel() is too
+# late to suppress the FFMPEG / obsensor backend probing messages.
+os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
 
 import cv2
 
@@ -75,13 +81,6 @@ class VisionProcessor:
     # ------------------------------------------------------------------
 
     def _init_camera(self) -> None:
-        # Suppress OpenCV's C++ backend probing messages (FFMPEG, obsensor
-        # etc.) that go directly to stderr and bypass Python logging.
-        try:
-            cv2.setLogLevel(6)  # 6 = LOG_LEVEL_SILENT
-        except Exception:
-            pass
-
         try:
             cap = cv2.VideoCapture(self.camera_index)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.frame_width)
