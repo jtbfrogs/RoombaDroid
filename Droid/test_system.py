@@ -148,6 +148,23 @@ def test_roomba_interface():
         print(f"  [FAIL] Error: {e}")
         print("  (This is OK - Roomba hardware may not be available)")
 
+def test_audio_output():
+    """Test audio output device directly via winsound (bypasses pyttsx3)."""
+    print("\n[TEST] Audio Output (winsound)")
+    try:
+        import winsound
+        print("  Playing startup beep sequence...")
+        beeps = [(1047, 120), (1319, 120), (1568, 120), (2093, 250)]
+        for freq, duration in beeps:
+            winsound.Beep(freq, duration)
+        print("  [OK] Beep sequence played - did you hear 4 ascending tones?")
+    except ImportError:
+        print("  [--] winsound not available (non-Windows platform)")
+    except Exception as e:
+        print(f"  [FAIL] Beep error: {e}")
+        print("  Check: Control Panel -> Sound -> Playback devices")
+
+
 def test_voice_processor():
     """Test voice processor and microphone availability."""
     print("\n[TEST] Voice Processor")
@@ -210,6 +227,7 @@ def run_all_tests():
         test_controller_init()
         test_command_queueing()
         test_roomba_interface()
+        test_audio_output()
         test_voice_processor()
         
         print("\n" + "=" * 60)

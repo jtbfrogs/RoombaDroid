@@ -17,6 +17,12 @@ try:
 except ImportError:
     _OLLAMA = False
 
+try:
+    import winsound
+    _WINSOUND = True
+except ImportError:
+    _WINSOUND = False  # Non-Windows platform
+
 
 class VoiceProcessor:
     """Handles microphone input, text-to-speech output, and LLM responses.
@@ -168,6 +174,33 @@ class VoiceProcessor:
     # ------------------------------------------------------------------
     # Microphone calibration
     # ------------------------------------------------------------------
+
+    def beep(self, pattern: str = "startup") -> None:
+        """Play a beep pattern via the Windows audio device.
+
+        Uses winsound.Beep() which bypasses pyttsx3 entirely - useful for
+        confirming the audio output device is working before testing TTS.
+
+        Patterns:
+            'startup'  - ascending R2-D2 style chirp
+            'ok'       - short double beep (command acknowledged)
+            'error'    - low descending tone
+        """
+        if not _WINSOUND:
+            self.log.debug("winsound not available (non-Windows)")
+            return
+
+        patterns = {
+            "startup": [(1047, 120), (1319, 120), (1568, 120), (2093, 250)],
+            "ok":      [(1568, 80),  (2093, 120)],
+            "error":   [(500,  200), (350,  300)],
+        }
+
+        try:
+            for freq, duration in patterns.get(pattern, patterns["ok"]):
+                winsound.Beep(freq, duration)
+        except Exception as exc:
+            self.log.warning("Beep failed: %s", exc)
 
     def calibrate(self, duration: float = 1.0) -> None:
         """Calibrate energy threshold for the current ambient noise level.

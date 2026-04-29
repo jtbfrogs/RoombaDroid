@@ -233,7 +233,12 @@ class DroidController:
         if self._voice:
             self._voice.calibrate()
 
-        # Test TTS so the operator knows audio output is working
+        # Beep test - confirms audio device works independent of TTS
+        if self._voice:
+            self._voice.beep("startup")
+            self.log.info("Voice  : audio beep test complete")
+
+        # TTS test - confirms pyttsx3 speech synthesis is working
         if self._voice and self._voice._engine:
             self._voice.speak("Droid online. All systems ready.")
             self.log.info("Voice  : TTS test queued")
