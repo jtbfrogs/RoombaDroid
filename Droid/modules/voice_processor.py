@@ -109,6 +109,36 @@ class VoiceProcessor:
             self.log.error("Recognizer init failed: %s", exc)
             return None
 
+    def _set_sapi5_output(self, engine, index: int) -> bool:
+        """Route pyttsx3/SAPI5 output to a specific audio device by index.
+
+        SAPI5 maintains its own device list (separate from pyaudio indices).
+        Use log_audio_devices() to see the available SAPI5 output indices.
+        Accesses pyttsx3 internals (engine._driver._tts) which is the only
+        way to do this without replacing pyttsx3 entirely.
+        """
+        try:
+            import comtypes.client
+            cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
+            cat.SetId(
+                r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\AudioOutput",
+                False,
+            )
+            tokens = cat.EnumerateTokens()
+            if index >= tokens.Count:
+                self.log.warning(
+                    "SAPI5 speaker index %d out of range (%d devices available)",
+                    index, tokens.Count,
+                )
+                return False
+            engine._driver._tts.AudioOutput = tokens.Item(index)
+            name = tokens.Item(index).GetDescription(0)
+            self.log.info("TTS output device set to: %s", name)
+            return True
+        except Exception as exc:
+            self.log.warning("Could not set SAPI5 audio output: %s", exc)
+            return False
+
     def _tts_worker(self) -> None:
         """Owns pyttsx3 exclusively - init and all calls happen in this thread."""
         try:
@@ -118,6 +148,12 @@ class VoiceProcessor:
                 engine.setProperty("voice", voices[0].id)
             engine.setProperty("rate",   config.get("voice.tts_rate", 230))
             engine.setProperty("volume", config.get("voice.tts_volume", 1.0))
+
+            # Route TTS to a specific speaker if configured
+            speaker_index = config.get("voice.speaker_index")
+            if speaker_index is not None:
+                self._set_sapi5_output(engine, int(speaker_index))
+
             self._engine = engine
         except Exception as exc:
             self.log.error("TTS init failed: %s", exc)
@@ -305,6 +341,28 @@ class VoiceProcessor:
             self.log.info("Microphone: using system default (set voice.microphone_index to override)")
         else:
             self.log.info("Microphone: index %s (from config)", mic_index)
+
+        # SAPI5 audio output devices (used by pyttsx3 / TTS)
+        # Note: these indices are separate from the pyaudio output indices above
+        try:
+            import comtypes.client
+            cat = comtypes.client.CreateObject("SAPI.SpObjectTokenCategory")
+            cat.SetId(
+                r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\AudioOutput",
+                False,
+            )
+            tokens = cat.EnumerateTokens()
+            self.log.info("SAPI5 TTS output devices (%d):", tokens.Count)
+            for i in range(tokens.Count):
+                name = tokens.Item(i).GetDescription(0)
+                self.log.info("  [%d] %s", i, name)
+            spk = config.get("voice.speaker_index")
+            if spk is None:
+                self.log.info("Speaker: using SAPI5 default (set voice.speaker_index to override)")
+            else:
+                self.log.info("Speaker: SAPI5 index %s (from config)", spk)
+        except Exception as exc:
+            self.log.warning("Could not enumerate SAPI5 audio outputs: %s", exc)
 
         self.log.info("--- End audio devices ---")
 

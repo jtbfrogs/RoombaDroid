@@ -71,6 +71,7 @@ class Config:
                 "language": "en-US",
                 "system_volume": 90,
                 "microphone_index": None,
+                "speaker_index": None,
             },
             "llm": {
                 "model": "neural-chat",
