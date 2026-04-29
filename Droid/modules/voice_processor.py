@@ -28,11 +28,27 @@ class VoiceProcessor:
     """
 
     _COMMAND_MAP: Dict[str, List[str]] = {
-        "FORWARD":  ["go forward", "move forward", "forward", "let's go"],
-        "BACKWARD": ["go back", "move back", "back", "reverse"],
-        "LEFT":     ["turn left", "go left", "left"],
-        "RIGHT":    ["turn right", "go right", "right"],
-        "STOP":     ["stop", "halt", "freeze", "wait"],
+        "FORWARD":  [
+            "forward", "go forward", "move forward", "drive forward",
+            "go ahead", "move ahead", "straight", "go straight",
+            "advance", "lets go", "let's go", "move",
+        ],
+        "BACKWARD": [
+            "back", "backward", "backwards", "go back", "move back",
+            "reverse", "back up", "go backward",
+        ],
+        "LEFT":     [
+            "left", "turn left", "go left", "rotate left",
+            "spin left", "face left",
+        ],
+        "RIGHT":    [
+            "right", "turn right", "go right", "rotate right",
+            "spin right", "face right",
+        ],
+        "STOP":     [
+            "stop", "halt", "freeze", "wait", "hold on",
+            "stay", "cancel", "enough", "cease",
+        ],
     }
 
     def __init__(self) -> None:
