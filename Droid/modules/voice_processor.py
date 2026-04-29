@@ -236,7 +236,10 @@ class VoiceProcessor:
         sentence (~2-3 s) rather than waiting for the full response (~28 s).
         The full reply text is returned and saved to chat history.
         """
+        self.log.info("LLM processing: '%s'", user_input[:50])
+
         if not self._llm:
+            self.log.info("LLM: not available - using fallback")
             self.speak("I cannot think right now.")
             return "I cannot think right now."
 
@@ -247,12 +250,14 @@ class VoiceProcessor:
                 {"role": "user",   "content": user_input},
             ]
 
+            self.log.info("LLM: waiting for first token...")
             stream = self._llm.chat(
                 model=self.llm_model, messages=messages, stream=True
             )
 
             full_response = ""
             buffer = ""
+            token_count = 0
 
             for chunk in stream:
                 # Support both dict-style and object-style Ollama responses
@@ -264,6 +269,10 @@ class VoiceProcessor:
                 if not token:
                     continue
 
+                if token_count == 0:
+                    self.log.info("LLM: first token received")
+
+                token_count += 1
                 full_response += token
                 buffer += token
 
@@ -271,14 +280,24 @@ class VoiceProcessor:
                 # Require at least 8 chars so we don't speak tiny fragments.
                 stripped = buffer.rstrip()
                 if stripped and stripped[-1] in ".!?" and len(stripped) >= 8:
+                    self.log.debug("LLM: speaking chunk: '%s'", stripped[:40])
                     self.speak(buffer.strip())
                     buffer = ""
 
+            self.log.info("LLM: stream complete (%d tokens)", token_count)
+
             # Speak any trailing text that didn't end with punctuation
             if buffer.strip():
+                self.log.debug("LLM: speaking trailing buffer")
                 self.speak(buffer.strip())
 
-            reply = full_response.strip() or "I... I don't know."
+            # If the stream produced nothing at all speak a fallback
+            if not full_response.strip():
+                self.log.warning("LLM: empty response from model")
+                self.speak("I... I don't know.")
+                return "I... I don't know."
+
+            reply = full_response.strip()
 
             with self._history_lock:
                 self.chat_history.append({"role": "user",      "content": user_input})
@@ -290,8 +309,8 @@ class VoiceProcessor:
             return reply
 
         except Exception as exc:
-            self.log.warning("LLM unavailable: %s", exc)
-            reply = "I... cannot think right now."
+            self.log.warning("LLM error: %s", exc)
+            reply = "I cannot think right now."
             self.speak(reply)
             return reply
 

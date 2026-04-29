@@ -175,6 +175,9 @@ class DroidController:
             self.voice.speak("okay")
         else:
             self.log.info("No command match - sending to LLM")
+            # Give immediate audio feedback so the user knows we heard them
+            # before the LLM starts generating (can take several seconds).
+            self.voice.speak("hmm...")
             # Submit to worker pool so the listen loop is not blocked
             # for the duration of the LLM response (~28 s on slow hardware).
             # get_response() streams and speaks internally; we don't wait.
