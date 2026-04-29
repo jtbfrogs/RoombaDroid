@@ -284,6 +284,8 @@ class VoiceProcessor:
                 return
             except Exception as exc:
                 self.log.warning("pycaw volume set failed: %s", exc)
+            finally:
+                del endpoint  # release COM ref before apartment teardown
 
         # Fallback: adjust pyttsx3 output level only
         if self._engine:
@@ -303,6 +305,8 @@ class VoiceProcessor:
                 return round(endpoint.GetMasterVolumeLevelScalar() * 100)
             except Exception as exc:
                 self.log.warning("pycaw volume get failed: %s", exc)
+            finally:
+                del endpoint  # release COM ref before apartment teardown
         return None
 
     def beep(self, pattern: str = "startup") -> None:
