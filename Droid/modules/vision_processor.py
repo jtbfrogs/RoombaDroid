@@ -98,6 +98,13 @@ class VisionProcessor:
         """Start the background capture loop."""
         if self.running or not self._cap:
             return
+
+        # Some cameras need a short warm-up before frames are ready.
+        # Drain a few initial frames before starting the processing loop.
+        warmup = config.get("vision.warmup_frames", 5)
+        for _ in range(warmup):
+            self._cap.read()
+
         self.running = True
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name="VisionLoop"

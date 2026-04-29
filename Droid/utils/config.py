@@ -62,6 +62,7 @@ class Config:
                 "fps": 30,
                 "frame_skip": 2,
                 "min_detection_confidence": 0.5,
+                "warmup_frames": 5,
             },
             "voice": {
                 "recognizer_energy_threshold": 300,

@@ -109,13 +109,34 @@ class VoiceProcessor:
             self.log.error("Recognizer init failed: %s", exc)
             return None
 
+    def _find_spvoice(self, engine):
+        """Locate the SAPI5 SpVoice COM object inside pyttsx3.
+
+        The internal attribute path varies across pyttsx3 versions so we
+        probe several known layouts and return the first that resolves.
+        """
+        candidates = [
+            ("_driver", "_driver", "_tts"),   # pyttsx3 <= 2.90
+            ("_driver", "_tts"),               # some 2.9x builds
+            ("proxy", "_driver", "_tts"),      # alternate layout
+            ("proxy", "_driver", "_driver", "_tts"),
+        ]
+        for path in candidates:
+            try:
+                obj = engine
+                for attr in path:
+                    obj = getattr(obj, attr)
+                if obj is not None:
+                    return obj
+            except AttributeError:
+                continue
+        return None
+
     def _set_sapi5_output(self, engine, index: int) -> bool:
         """Route pyttsx3/SAPI5 output to a specific audio device by index.
 
         SAPI5 maintains its own device list (separate from pyaudio indices).
         Use log_audio_devices() to see the available SAPI5 output indices.
-        Accesses pyttsx3 internals (engine._driver._tts) which is the only
-        way to do this without replacing pyttsx3 entirely.
         """
         try:
             import comtypes.client
@@ -131,7 +152,16 @@ class VoiceProcessor:
                     index, tokens.Count,
                 )
                 return False
-            engine._driver._tts.AudioOutput = tokens.Item(index)
+
+            spvoice = self._find_spvoice(engine)
+            if spvoice is None:
+                self.log.warning(
+                    "Could not locate SAPI5 SpVoice in pyttsx3 internals  -  "
+                    "set the default Windows audio output device manually instead"
+                )
+                return False
+
+            spvoice.AudioOutput = tokens.Item(index)
             name = tokens.Item(index).GetDescription(0)
             self.log.info("TTS output device set to: %s", name)
             return True
