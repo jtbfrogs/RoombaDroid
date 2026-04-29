@@ -8,7 +8,7 @@ class Config:
     """Loads config.json on startup and provides cached dot-notation reads.
 
     Example:
-        config.get("roomba.uart_port")          # → "COM7"
+        config.get("roomba.uart_port")          # -> "COM7"
         config.set("vision.frame_skip", 3)      # persists to disk
     """
 

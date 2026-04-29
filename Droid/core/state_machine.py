@@ -48,7 +48,7 @@ class StateMachine:
 
         if new_state not in self.VALID_TRANSITIONS.get(self.current_state, set()):
             self.log.warning(
-                "Invalid transition: %s → %s",
+                "Invalid transition: %s -> %s",
                 self.current_state.value,
                 new_state.value,
             )
@@ -56,7 +56,7 @@ class StateMachine:
 
         self.previous_state = self.current_state
         self.current_state = new_state
-        self.log.debug("%s → %s", self.previous_state.value, new_state.value)
+        self.log.debug("%s -> %s", self.previous_state.value, new_state.value)
 
         for cb in self._callbacks.get(new_state, []):
             try:

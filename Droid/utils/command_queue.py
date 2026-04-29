@@ -63,7 +63,7 @@ class CommandQueue:
             return True
         except queue.Full:
             self._stats["dropped"] += 1
-            self.log.warning("Queue full — dropped: %s", command)
+            self.log.warning("Queue full  -  dropped: %s", command)
             return False
 
     def get(self, timeout: float = 0.1) -> Optional[Command]:

@@ -41,12 +41,12 @@ class VisionProcessor:
         self._current: Optional[Dict] = None
         self.running = False
 
-        # Haar cascade — always loaded
+        # Haar cascade  -  always loaded
         self._face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
 
-        # MediaPipe detectors — optional
+        # MediaPipe detectors  -  optional
         self._pose_detector = None
         self._face_detector = None
         if _MEDIAPIPE:
@@ -58,10 +58,10 @@ class VisionProcessor:
                 self._face_detector = mp.solutions.face_detection.FaceDetection(
                     min_detection_confidence=conf
                 )
-                self.log.info("✓ MediaPipe detectors loaded")
+                self.log.info("[OK] MediaPipe detectors loaded")
             except Exception as exc:
                 self.log.warning(
-                    "MediaPipe init failed (%s) — falling back to cascade only", exc
+                    "MediaPipe init failed (%s)  -  falling back to cascade only", exc
                 )
 
         self._init_camera()
@@ -78,9 +78,9 @@ class VisionProcessor:
             cap.set(cv2.CAP_PROP_FPS,          self.fps)
             if cap.isOpened():
                 self._cap = cap
-                self.log.info("✓ Camera %d initialised", self.camera_index)
+                self.log.info("[OK] Camera %d initialised", self.camera_index)
             else:
-                self.log.error("✗ Camera %d failed to open", self.camera_index)
+                self.log.error("[FAIL] Camera %d failed to open", self.camera_index)
         except Exception as exc:
             self.log.error("Camera init error: %s", exc)
 

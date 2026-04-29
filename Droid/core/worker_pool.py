@@ -45,7 +45,7 @@ class WorkerPool:
             self._queue.put((func, args, kwargs), timeout=1.0)
             return True
         except queue.Full:
-            self.log.warning("Task queue full — task dropped")
+            self.log.warning("Task queue full  -  task dropped")
             return False
 
     def _loop(self) -> None:

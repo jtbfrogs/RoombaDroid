@@ -64,12 +64,12 @@ class LoggerManager:
                 datefmt="%H:%M:%S",
             )
 
-            # Console — INFO and above, UTF-8 safe on all platforms
+            # Console  -  INFO and above, UTF-8 safe on all platforms
             ch = _make_console_handler()
             ch.setLevel(logging.INFO)
             ch.setFormatter(fmt)
 
-            # File — DEBUG and above, rotating at 5 MB
+            # File  -  DEBUG and above, rotating at 5 MB
             log_file = os.path.join(cls._log_dir, f"{name}.log")
             fh = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
             fh.setLevel(logging.DEBUG)

@@ -20,10 +20,10 @@ except ImportError:
 class VoiceProcessor:
     """Handles microphone input, text-to-speech output, and LLM responses.
 
-    * ``listen()``       — blocks until speech is heard (or timeout).
-    * ``speak()``        — fires-and-forgets; returns immediately.
-    * ``get_response()`` — queries the local Ollama LLM.
-    * ``parse_command()``— maps plain-language phrases to movement commands.
+    * ``listen()``        -  blocks until speech is heard (or timeout).
+    * ``speak()``         -  fires-and-forgets; returns immediately.
+    * ``get_response()``  -  queries the local Ollama LLM.
+    * ``parse_command()`` -  maps plain-language phrases to movement commands.
     """
 
     _COMMAND_MAP: Dict[str, List[str]] = {
@@ -79,11 +79,11 @@ class VoiceProcessor:
 
     def _init_llm(self) -> Optional["OllamaClient"]:
         if not _OLLAMA:
-            self.log.warning("Ollama not installed — run: pip install ollama")
+            self.log.warning("Ollama not installed  -  run: pip install ollama")
             return None
         try:
             client = OllamaClient()
-            self.log.info("✓ Ollama LLM available")
+            self.log.info("[OK] Ollama LLM available")
             return client
         except Exception as exc:
             self.log.warning("Ollama unavailable: %s", exc)
@@ -131,7 +131,7 @@ class VoiceProcessor:
 
         try:
             with sr.Microphone() as source:
-                self.log.debug("Listening (timeout=%.1fs)…", timeout)
+                self.log.debug("Listening (timeout=%.1fs)...", timeout)
                 audio = self._recognizer.listen(
                     source, timeout=timeout, phrase_time_limit=10
                 )
@@ -168,7 +168,7 @@ class VoiceProcessor:
                 reply = raw.get("message", {}).get("content", "")
             else:
                 reply = getattr(getattr(raw, "message", None), "content", "")
-            reply = reply.strip() or "I… I don't know."
+            reply = reply.strip() or "I... I don't know."
 
             self.chat_history.append({"role": "user",      "content": user_input})
             self.chat_history.append({"role": "assistant", "content": reply})

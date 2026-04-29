@@ -1,4 +1,4 @@
-"""Central droid orchestrator — wires together all subsystems."""
+"""Central droid orchestrator  -  wires together all subsystems."""
 import time
 from typing import Optional
 
@@ -56,7 +56,7 @@ class DroidController:
         self._vision: Optional[VisionProcessor] = None
         self._voice:  Optional[VoiceProcessor]  = None
 
-        # Failure sentinels — prevents re-attempting a broken init every call
+        # Failure sentinels  -  prevents re-attempting a broken init every call
         self._roomba_failed = False
         self._vision_failed = False
         self._voice_failed  = False
@@ -66,7 +66,7 @@ class DroidController:
         self._register_handlers()
         self._register_callbacks()
 
-        self.log.info("✓ DroidController ready")
+        self.log.info("[OK] DroidController ready")
 
     # ------------------------------------------------------------------
     # Lazy-loaded hardware properties
@@ -181,7 +181,7 @@ class DroidController:
             return
         self.running = True
         self.worker_pool.start()
-        self.log.info("✓ Droid started")
+        self.log.info("[OK] Droid started")
         if self.voice:
             self.voice.speak("Hello, I am awake.")
 
@@ -191,7 +191,7 @@ class DroidController:
             return
         self.running = False
         self.state_machine.transition(DroidState.SHUTDOWN)
-        self.log.info("Shutting down…")
+        self.log.info("Shutting down...")
 
         if self._roomba:
             try:
@@ -206,7 +206,7 @@ class DroidController:
                 self.log.warning("Vision stop error: %s", exc)
 
         self.worker_pool.stop()
-        self.log.info("✓ Shutdown complete")
+        self.log.info("[OK] Shutdown complete")
 
     # ------------------------------------------------------------------
     # Public command API

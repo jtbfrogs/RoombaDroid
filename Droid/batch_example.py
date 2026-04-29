@@ -52,7 +52,7 @@ def example_batch_commands():
     print(f"  Processed {count} commands in priority order")
     
     droid.stop()
-    print("\n✓ Batch processing complete")
+    print("\n[OK] Batch processing complete")
 
 if __name__ == "__main__":
     example_batch_commands()

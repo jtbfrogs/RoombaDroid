@@ -23,7 +23,7 @@ def test_logger():
     log.warning("Warning message")
     log.error("Error message")
     
-    print("✓ Logging works")
+    print("[OK] Logging works")
 
 def test_config():
     """Test configuration management."""
@@ -38,7 +38,7 @@ def test_config():
     val3 = config.get("nonexistent.value", "default")
     print(f"  Missing value: {val3}")
     
-    print("✓ Config works")
+    print("[OK] Config works")
 
 def test_state_machine():
     """Test state machine."""
@@ -59,7 +59,7 @@ def test_state_machine():
     assert not sm.transition(DroidState.TRACKING)
     print(f"  State: {sm.current_state.value} (invalid transition rejected)")
     
-    print("✓ State machine works")
+    print("[OK] State machine works")
 
 def test_command_queue():
     """Test command queue."""
@@ -88,7 +88,7 @@ def test_command_queue():
     assert queue.get() == cmd1
     print(f"  Got priority 0 command")
     
-    print("✓ Command queue works")
+    print("[OK] Command queue works")
 
 def test_controller_init():
     """Test controller initialization."""
@@ -105,7 +105,7 @@ def test_controller_init():
     droid.stop()
     print(f"  Stopped")
     
-    print("✓ Controller works")
+    print("[OK] Controller works")
 
 def test_command_queueing():
     """Test command queueing."""
@@ -126,7 +126,7 @@ def test_command_queueing():
     print(f"  Processed {processed} commands")
     
     droid.stop()
-    print("✓ Command queueing works")
+    print("[OK] Command queueing works")
 
 def test_roomba_interface():
     """Test Roomba interface (dry run)."""
@@ -140,12 +140,12 @@ def test_roomba_interface():
         roomba = RoombaInterface()
         
         if roomba.connected:
-            print("  ✓ Roomba connected")
+            print("  [OK] Roomba connected")
             roomba.stop()
         else:
-            print("  ✗ Roomba not connected (this is OK in test environment)")
+            print("  [FAIL] Roomba not connected (this is OK in test environment)")
     except Exception as e:
-        print(f"  ✗ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
         print("  (This is OK - Roomba hardware may not be available)")
 
 def test_voice_processor():
@@ -157,12 +157,12 @@ def test_voice_processor():
         
         print("  Initializing...")
         voice = VoiceProcessor()
-        print("  ✓ Voice processor initialized")
+        print("  [OK] Voice processor initialized")
         
         # Don't actually listen in test
         print("  (Microphone test skipped)")
     except Exception as e:
-        print(f"  ✗ Error: {e}")
+        print(f"  [FAIL] Error: {e}")
 
 def run_all_tests():
     """Run all tests."""
@@ -181,11 +181,11 @@ def run_all_tests():
         test_voice_processor()
         
         print("\n" + "=" * 60)
-        print("✓ TESTS COMPLETE")
+        print("[OK] TESTS COMPLETE")
         print("=" * 60 + "\n")
         
     except Exception as e:
-        print(f"\n✗ TEST FAILED: {e}")
+        print(f"\n[FAIL] TEST FAILED: {e}")
         import traceback
         traceback.print_exc()
 

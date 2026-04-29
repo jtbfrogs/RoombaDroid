@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DROID SYSTEM v3.0 — entry point."""
+"""DROID SYSTEM v3.0  -  entry point."""
 import signal
 import sys
 import threading
@@ -12,14 +12,14 @@ from core.logger import logger as log_manager
 from core.controller import DroidController
 
 _BANNER = """
-╔════════════════════════════════════════════════════════════╗
-║                  DROID SYSTEM v3.0                         ║
-║          Star Wars-like Roomba Droid (Enhanced)            ║
-║                                                            ║
-║  • Async command processing    • Lazy module loading       ║
-║  • Frame-skipping vision       • Optimised Roomba I/O      ║
-║  • Worker-pool threading       • Graceful error recovery   ║
-╚════════════════════════════════════════════════════════════╝
++------------------------------------------------------------+
+|                  DROID SYSTEM v3.0                         |
+|          Star Wars-like Roomba Droid (Enhanced)            |
+|                                                            |
+|  * Async command processing    * Lazy module loading       |
+|  * Frame-skipping vision       * Optimised Roomba I/O      |
+|  * Worker-pool threading       * Graceful error recovery   |
++------------------------------------------------------------+
 """
 
 
@@ -37,7 +37,7 @@ def main() -> None:
         if shutdown_requested.is_set():
             return  # already shutting down
         shutdown_requested.set()
-        print("\n[!] Shutting down…")
+        print("\n[!] Shutting down...")
 
         if droid:
             # Force-exit if graceful shutdown stalls after 3 s

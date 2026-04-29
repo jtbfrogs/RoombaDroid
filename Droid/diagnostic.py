@@ -28,15 +28,15 @@ def test_imports():
     for module, package in deps.items():
         try:
             __import__(module)
-            print(f"  ✓ {module}")
+            print(f"  [OK] {module}")
         except ImportError as e:
-            print(f"  ✗ {module}")
-            print(f"    └─ Error: {e}")
-            print(f"    └─ Fix: pip install {package}")
+            print(f"  [FAIL] {module}")
+            print(f"    +- Error: {e}")
+            print(f"    +- Fix: pip install {package}")
             missing.append(package)
         except Exception as e:
-            print(f"  ✗ {module} - unexpected error")
-            print(f"    └─ Error: {type(e).__name__}: {e}")
+            print(f"  [FAIL] {module} - unexpected error")
+            print(f"    +- Error: {type(e).__name__}: {e}")
             missing.append(package)
     
     # Optional but recommended
@@ -48,11 +48,11 @@ def test_imports():
     for module, package in optional.items():
         try:
             __import__(module)
-            print(f"  ✓ {module} (optional)")
+            print(f"  [OK] {module} (optional)")
         except ImportError:
-            print(f"  ○ {module} (optional) - not installed")
+            print(f"  [--] {module} (optional) - not installed")
         except Exception as e:
-            print(f"  ⚠ {module} (optional) - error: {type(e).__name__}")
+            print(f"  [WARN] {module} (optional) - error: {type(e).__name__}")
     
     if missing:
         print(f"\n  Action required: pip install {' '.join(missing)}")
@@ -70,19 +70,19 @@ def test_config():
         roomba_port = config.get("roomba.uart_port")
         vision_fps = config.get("vision.fps")
         
-        print(f"  ✓ Config loaded")
-        print(f"    ├─ Roomba port: {roomba_port}")
-        print(f"    └─ Vision FPS: {vision_fps}")
+        print(f"  [OK] Config loaded")
+        print(f"    +- Roomba port: {roomba_port}")
+        print(f"    +- Vision FPS: {vision_fps}")
         return True
     except FileNotFoundError as e:
-        print(f"  ✗ Config file not found")
-        print(f"    └─ Expected: {e}")
-        print(f"    └─ Fix: Ensure config.json exists in the Droid directory")
+        print(f"  [FAIL] Config file not found")
+        print(f"    +- Expected: {e}")
+        print(f"    +- Fix: Ensure config.json exists in the Droid directory")
         return False
     except Exception as e:
-        print(f"  ✗ Config error")
-        print(f"    └─ Error: {type(e).__name__}: {e}")
-        print(f"    └─ Fix: Check config.json syntax and values")
+        print(f"  [FAIL] Config error")
+        print(f"    +- Error: {type(e).__name__}: {e}")
+        print(f"    +- Fix: Check config.json syntax and values")
         return False
 
 def test_logger():
@@ -93,20 +93,20 @@ def test_logger():
         
         logger.init("logs")
         log = logger.get_logger("diagnostic")
-        log.info("✓ Logging works")
-        print(f"  ✓ Logger initialized")
-        print(f"    └─ Logs location: logs/")
+        log.info("[OK] Logging works")
+        print(f"  [OK] Logger initialized")
+        print(f"    +- Logs location: logs/")
         return True
     except PermissionError as e:
-        print(f"  ✗ Logger initialization failed - permission denied")
-        print(f"    └─ Error: {e}")
-        print(f"    └─ Fix: Check write permissions for logs/ directory")
+        print(f"  [FAIL] Logger initialization failed - permission denied")
+        print(f"    +- Error: {e}")
+        print(f"    +- Fix: Check write permissions for logs/ directory")
         return False
     except Exception as e:
-        print(f"  ✗ Logger error")
-        print(f"    └─ Error: {type(e).__name__}: {e}")
+        print(f"  [FAIL] Logger error")
+        print(f"    +- Error: {type(e).__name__}: {e}")
         import traceback
-        print(f"    └─ Traceback: {traceback.format_exc()}")
+        print(f"    +- Traceback: {traceback.format_exc()}")
         return False
 
 def test_state_machine():
@@ -119,13 +119,13 @@ def test_state_machine():
         
         # Try a transition
         sm.transition(DroidState.LISTENING)
-        print(f"  ✓ State machine works")
-        print(f"    └─ Current state: {sm.current_state.value}")
+        print(f"  [OK] State machine works")
+        print(f"    +- Current state: {sm.current_state.value}")
         return True
     except Exception as e:
-        print(f"  ✗ State machine error")
-        print(f"    └─ Error: {type(e).__name__}: {e}")
-        print(f"    └─ Fix: Check core/state_machine.py for issues")
+        print(f"  [FAIL] State machine error")
+        print(f"    +- Error: {type(e).__name__}: {e}")
+        print(f"    +- Fix: Check core/state_machine.py for issues")
         return False
 
 def test_command_queue():
@@ -141,14 +141,14 @@ def test_command_queue():
         
         retrieved = queue.get()
         if retrieved:
-            print(f"  ✓ Command queue works")
+            print(f"  [OK] Command queue works")
             print(f"    - Queue size: {queue.size()}")
             return True
         else:
-            print(f"  ✗ Could not retrieve command")
+            print(f"  [FAIL] Could not retrieve command")
             return False
     except Exception as e:
-        print(f"  ✗ Command queue error: {e}")
+        print(f"  [FAIL] Command queue error: {e}")
         return False
 
 def test_controller():
@@ -160,13 +160,13 @@ def test_controller():
         print("  Initializing (this may take 1-2 seconds)...")
         droid = DroidController()
         
-        print(f"  ✓ Controller initialized")
+        print(f"  [OK] Controller initialized")
         print(f"    - State: {droid.state_machine.current_state.value}")
         
         # Don't start, just test init
         return True
     except Exception as e:
-        print(f"  ✗ Controller error: {e}")
+        print(f"  [FAIL] Controller error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -180,26 +180,26 @@ def test_modules():
     # Test each module individually
     try:
         from modules.voice_processor import VoiceProcessor
-        print("  ✓ VoiceProcessor imports")
+        print("  [OK] VoiceProcessor imports")
         results.append(True)
     except Exception as e:
-        print(f"  ✗ VoiceProcessor error: {e}")
+        print(f"  [FAIL] VoiceProcessor error: {e}")
         results.append(False)
     
     try:
         from modules.vision_processor import VisionProcessor
-        print("  ✓ VisionProcessor imports")
+        print("  [OK] VisionProcessor imports")
         results.append(True)
     except Exception as e:
-        print(f"  ✗ VisionProcessor error: {e}")
+        print(f"  [FAIL] VisionProcessor error: {e}")
         results.append(False)
     
     try:
         from modules.roomba_interface import RoombaInterface
-        print("  ✓ RoombaInterface imports")
+        print("  [OK] RoombaInterface imports")
         results.append(True)
     except Exception as e:
-        print(f"  ✗ RoombaInterface error: {e}")
+        print(f"  [FAIL] RoombaInterface error: {e}")
         results.append(False)
     
 
@@ -230,15 +230,15 @@ def main():
     total = len(results)
     
     for name, result in results:
-        status = "✓ PASS" if result else "✗ FAIL"
+        status = "[OK] PASS" if result else "[FAIL] FAIL"
         print(f"  {status}: {name}")
     
     print(f"\nTotal: {passed}/{total} tests passed")
     
     if passed == total:
-        print("\n✓ All systems ready! You can now run: python main.py")
+        print("\n[OK] All systems ready! You can now run: python main.py")
     else:
-        print(f"\n✗ {total - passed} issue(s) found. Check above for details.")
+        print(f"\n[FAIL] {total - passed} issue(s) found. Check above for details.")
         print("\nCommon fixes:")
         print("  1. Install missing packages: pip install -r requirements.txt")
         print("  2. Check config.json for correct settings")

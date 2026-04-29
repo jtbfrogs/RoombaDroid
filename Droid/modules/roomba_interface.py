@@ -9,7 +9,7 @@ from core.logger import logger
 from utils.config import config
 
 
-# Maps direction strings → (velocity_multiplier, radius)
+# Maps direction strings -> (velocity_multiplier, radius)
 # Radius special values: 0x8000 = straight, 0x0001 = spin CCW, 0xFFFF = spin CW
 _DRIVE_PARAMS: dict = {
     "FORWARD":  ("forward",  0x8000),
@@ -55,7 +55,7 @@ class RoombaInterface:
     # ------------------------------------------------------------------
 
     def _connect(self) -> bool:
-        self.log.info("Connecting to %s @ %d baud…", self.uart_port, self.baud_rate)
+        self.log.info("Connecting to %s @ %d baud...", self.uart_port, self.baud_rate)
         try:
             self._port = serial.Serial(
                 port=self.uart_port,
@@ -68,11 +68,11 @@ class RoombaInterface:
             self._port.reset_output_buffer()
             time.sleep(config.get("roomba.wakeup_wait_time", 0.5))
             self.connected = True
-            self.log.info("✓ Roomba connected")
+            self.log.info("[OK] Roomba connected")
             self._start_watchdog()
             return True
         except (serial.SerialException, OSError) as exc:
-            self.log.error("✗ Roomba connection failed: %s", exc)
+            self.log.error("[FAIL] Roomba connection failed: %s", exc)
             self.connected = False
             return False
 
@@ -93,7 +93,7 @@ class RoombaInterface:
                 self.current_command != "STOP"
                 and time.monotonic() - self.last_command_time > self.watchdog_timeout
             ):
-                self.log.warning("Watchdog timeout — sending STOP")
+                self.log.warning("Watchdog timeout  -  sending STOP")
                 self.send_command("STOP")
             time.sleep(0.2)
 
