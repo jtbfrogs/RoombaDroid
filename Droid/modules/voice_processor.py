@@ -183,6 +183,25 @@ class VoiceProcessor:
     # Microphone calibration
     # ------------------------------------------------------------------
 
+    def _get_volume_endpoint(self):
+        """Return a pycaw IAudioEndpointVolume interface, or None.
+
+        Handles both old pycaw (GetSpeakers returns raw IMMDevice COM object)
+        and new pycaw (GetSpeakers returns an AudioDevice wrapper whose
+        underlying COM device is in ._dev).
+        """
+        if not _PYCAW:
+            return None
+        try:
+            speakers = AudioUtilities.GetSpeakers()
+            # Newer pycaw wraps IMMDevice in AudioDevice; unwrap if needed.
+            device = getattr(speakers, "_dev", speakers)
+            interface = device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            return cast(interface, POINTER(IAudioEndpointVolume))
+        except Exception as exc:
+            self.log.warning("pycaw endpoint unavailable: %s", exc)
+            return None
+
     def set_system_volume(self, level: int) -> None:
         """Set the Windows master volume (0-100).
 
@@ -191,12 +210,10 @@ class VoiceProcessor:
         """
         level = max(0, min(100, level))
 
-        if _PYCAW:
+        endpoint = self._get_volume_endpoint()
+        if endpoint is not None:
             try:
-                devices   = AudioUtilities.GetSpeakers()
-                interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                volume    = cast(interface, POINTER(IAudioEndpointVolume))
-                volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+                endpoint.SetMasterVolumeLevelScalar(level / 100.0, None)
                 self.log.info("System volume set to %d%%", level)
                 return
             except Exception as exc:
@@ -205,7 +222,6 @@ class VoiceProcessor:
         # Fallback: adjust pyttsx3 output level only
         if self._engine:
             try:
-                # pyttsx3 volume is 0.0-1.0
                 self._engine.setProperty("volume", level / 100.0)
                 self.log.info("TTS volume set to %d%% (system volume unchanged)", level)
             except Exception as exc:
@@ -215,13 +231,10 @@ class VoiceProcessor:
 
     def get_system_volume(self) -> Optional[int]:
         """Return the current Windows master volume (0-100), or None."""
-        if _PYCAW:
+        endpoint = self._get_volume_endpoint()
+        if endpoint is not None:
             try:
-                devices   = AudioUtilities.GetSpeakers()
-                interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                volume    = cast(interface, POINTER(IAudioEndpointVolume))
-                scalar    = volume.GetMasterVolumeLevelScalar()
-                return round(scalar * 100)
+                return round(endpoint.GetMasterVolumeLevelScalar() * 100)
             except Exception as exc:
                 self.log.warning("pycaw volume get failed: %s", exc)
         return None
