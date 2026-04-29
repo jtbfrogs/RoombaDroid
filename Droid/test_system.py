@@ -149,20 +149,52 @@ def test_roomba_interface():
         print("  (This is OK - Roomba hardware may not be available)")
 
 def test_voice_processor():
-    """Test voice processor (dry run)."""
+    """Test voice processor and microphone availability."""
     print("\n[TEST] Voice Processor")
-    
+
     try:
         from modules.voice_processor import VoiceProcessor
-        
+
         print("  Initializing...")
         voice = VoiceProcessor()
         print("  [OK] Voice processor initialized")
-        
-        # Don't actually listen in test
-        print("  (Microphone test skipped)")
     except Exception as e:
-        print(f"  [FAIL] Error: {e}")
+        print(f"  [FAIL] Voice processor init error: {e}")
+        return
+
+    # Check TTS engine
+    if voice._engine:
+        print("  [OK] TTS engine available")
+    else:
+        print("  [FAIL] TTS engine not available")
+
+    # Check speech recognizer
+    if voice._recognizer:
+        print("  [OK] Speech recognizer available")
+    else:
+        print("  [FAIL] Speech recognizer not available")
+
+    # Check microphone
+    print("  Checking microphone...")
+    try:
+        import speech_recognition as sr
+        mics = sr.Microphone.list_microphone_names()
+        if mics:
+            print(f"  [OK] {len(mics)} microphone(s) found:")
+            for i, name in enumerate(mics):
+                print(f"    [{i}] {name}")
+        else:
+            print("  [FAIL] No microphones detected")
+    except Exception as e:
+        print(f"  [FAIL] Microphone check error: {e}")
+
+    # Check LLM
+    if voice._llm:
+        print("  [OK] Ollama LLM available")
+    else:
+        print("  [WARN] Ollama LLM not available (optional)")
+
+    print("  (Live listen test skipped - run manually to test audio capture)")
 
 def run_all_tests():
     """Run all tests."""
