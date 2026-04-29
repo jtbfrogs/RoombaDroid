@@ -54,7 +54,7 @@ class VoiceProcessor:
 
         self._llm = self._init_llm()
 
-        self.llm_model     = config.get("llm.model", "neural-chat")
+        self.llm_model     = config.get("llm.model")
         self.system_prompt = self._build_system_prompt()
 
         self.chat_history: List[Dict] = []
