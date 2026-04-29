@@ -13,10 +13,11 @@
 
 | Document | Contains |
 |----------|----------|
+| **[CODEBASE.md](CODEBASE.md)** | **Authoritative reference – architecture, all APIs, config, caveats** |
 | [QUICK_START.md](QUICK_START.md) | Installation & basic usage |
-| [README.md](README.md) | Complete documentation |
+| [README.md](README.md) | Overview & performance benchmarks |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design & internals |
-| [EXAMPLES.md](EXAMPLES.md) | 8 usage examples |
+| [EXAMPLES.md](EXAMPLES.md) | Usage examples |
 
 ## 🎮 Examples
 
@@ -38,8 +39,8 @@ core/
 modules/
 ├── roomba_interface.py    # Roomba control
 ├── voice_processor.py     # Speech/LLM
-├── vision_processor.py    # Camera detection
-└── smart_lights.py        # Light control
+└── vision_processor.py    # Camera detection
+# NOTE: smart_lights.py does NOT exist in v3.0
 
 utils/
 ├── config.py          # Configuration
@@ -57,7 +58,7 @@ droid.start()
 droid.move("FORWARD")
 droid.speak("Hello!")
 droid.listen()
-droid.set_light("cyan")
+# Note: droid.set_light() is NOT implemented in v3.0
 
 while droid.running:
     droid.process_commands()
@@ -127,7 +128,7 @@ Memory usage high | Reduce `frame_width`/`frame_height`, increase `frame_skip`
 
 ## 📈 Architecture Quick Facts
 
-- **Threads**: 5 total (main + 3 workers + watchdog)
+- **Threads**: 7 total (main + 3 workers + watchdog + vision loop + TTS worker)
 - **Queue**: Priority-based, max 50 commands
 - **Modules**: Lazy-loaded (only init what you use)
 - **Logging**: Rotating files, 5MB max, 3 backups

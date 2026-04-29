@@ -60,11 +60,10 @@ The v3.0 system prioritizes:
 - Ollama LLM integration
 - Chat history persistence
 
-### SmartLights (modules/smart_lights.py)
-- Govee API integration
-- RGB color control
-- Brightness adjustment
-- Error handling for network issues
+### SmartLights
+> **Not implemented in v3.0.** `modules/smart_lights.py` does not exist.
+> The `lights` section in `config.json` and references to `droid.set_light()`
+> in earlier documentation are stubs for a future Govee LED integration.
 
 ## Main Controller (core/controller.py)
 
@@ -118,21 +117,22 @@ Flow:
 
 ```
 Main Thread
-├── Worker Pool (3 threads)
+├── Worker Pool (3 threads, configurable)
 │   ├── Background tasks
-│   ├── Long I/O operations
-│   └── Processing
+│   ├── Long I/O operations (LLM)
+│   └── Return-to-IDLE after movement
 ├── Roomba Watchdog (1 thread)
 │   └── Safety monitoring
 ├── Vision Loop (1 thread)
-│   └── Frame processing
+│   └── Frame capture + detection
+├── TTS Worker (1 thread)
+│   └── pyttsx3 / SAPI5 speech (COM STA thread)
 └── Event Loop
     ├── Process commands
-    ├── Check timers
-    └── Update state
+    └── Listen for voice
 ```
 
-Only 5 threads total (main + pool), vs 8-10 in v2.0.
+7 threads total at runtime (main + 3 workers + watchdog + vision + TTS).
 
 ## Error Handling Strategy
 
