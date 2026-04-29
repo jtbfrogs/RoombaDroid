@@ -52,9 +52,8 @@ class VoiceProcessor:
         if not self._tts_ready.wait(timeout=5.0):
             self.log.warning("TTS engine did not initialise within 5 s")
 
-        self._llm = self._init_llm()
-
         self.llm_model     = config.get("llm.model")
+        self._llm = self._init_llm()
         self.system_prompt = self._build_system_prompt()
 
         self.chat_history: List[Dict] = []
