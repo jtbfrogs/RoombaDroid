@@ -154,12 +154,26 @@ class DroidController:
     def _handle_listen(self, data: dict) -> None:
         if not self.voice:
             return
+
         self.state_machine.transition(DroidState.LISTENING)
         text = self.voice.listen(timeout=data.get("timeout", 5.0))
-        if text:
-            self.state_machine.transition(DroidState.THINKING)
+
+        if not text:
+            self.state_machine.transition(DroidState.IDLE)
+            return
+
+        self.state_machine.transition(DroidState.THINKING)
+
+        # Check for movement commands before hitting the LLM.
+        movement = self.voice.parse_command(text)
+        if movement:
+            self.log.info("Voice command: %s", movement)
+            self.move(movement)
+            self.voice.speak("okay")
+        else:
             response = self.voice.get_response(text)
             self.voice.speak(response)
+
         self.state_machine.transition(DroidState.IDLE)
 
     def _handle_stop(self, data: dict) -> None:

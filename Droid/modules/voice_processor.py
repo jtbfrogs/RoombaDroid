@@ -131,10 +131,17 @@ class VoiceProcessor:
             return None
         try:
             client = OllamaClient()
-            self.log.info("[OK] Ollama LLM available")
+            # Probe the server - creating OllamaClient() alone does not
+            # open a connection, so this is the only reliable way to
+            # confirm Ollama is actually running before we claim it is.
+            client.list()
+            self.log.info("[OK] Ollama running (model: %s)", self.llm_model)
             return client
         except Exception as exc:
-            self.log.warning("Ollama unavailable: %s", exc)
+            self.log.warning(
+                "Ollama not reachable (%s)  -  LLM disabled. "
+                "Start Ollama and restart to enable.", exc
+            )
             return None
 
     def _build_system_prompt(self) -> str:
@@ -223,8 +230,8 @@ class VoiceProcessor:
             return reply
 
         except Exception as exc:
-            self.log.error("LLM error: %s", exc)
-            return "Something went wrong."
+            self.log.warning("LLM unavailable: %s", exc)
+            return "I... cannot think right now."
 
     # ------------------------------------------------------------------
     # Command parsing
