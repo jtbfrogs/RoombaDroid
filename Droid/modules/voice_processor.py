@@ -23,6 +23,14 @@ try:
 except ImportError:
     _WINSOUND = False  # Non-Windows platform
 
+try:
+    from ctypes import cast, POINTER
+    from comtypes import CLSCTX_ALL
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    _PYCAW = True
+except ImportError:
+    _PYCAW = False
+
 
 class VoiceProcessor:
     """Handles microphone input, text-to-speech output, and LLM responses.
@@ -174,6 +182,49 @@ class VoiceProcessor:
     # ------------------------------------------------------------------
     # Microphone calibration
     # ------------------------------------------------------------------
+
+    def set_system_volume(self, level: int) -> None:
+        """Set the Windows master volume (0-100).
+
+        Requires pycaw: pip install pycaw
+        Falls back to adjusting pyttsx3 output volume if pycaw is absent.
+        """
+        level = max(0, min(100, level))
+
+        if _PYCAW:
+            try:
+                devices   = AudioUtilities.GetSpeakers()
+                interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                volume    = cast(interface, POINTER(IAudioEndpointVolume))
+                volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+                self.log.info("System volume set to %d%%", level)
+                return
+            except Exception as exc:
+                self.log.warning("pycaw volume set failed: %s", exc)
+
+        # Fallback: adjust pyttsx3 output level only
+        if self._engine:
+            try:
+                # pyttsx3 volume is 0.0-1.0
+                self._engine.setProperty("volume", level / 100.0)
+                self.log.info("TTS volume set to %d%% (system volume unchanged)", level)
+            except Exception as exc:
+                self.log.warning("TTS volume set failed: %s", exc)
+        else:
+            self.log.warning("Volume control not available (no pycaw, no TTS engine)")
+
+    def get_system_volume(self) -> Optional[int]:
+        """Return the current Windows master volume (0-100), or None."""
+        if _PYCAW:
+            try:
+                devices   = AudioUtilities.GetSpeakers()
+                interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                volume    = cast(interface, POINTER(IAudioEndpointVolume))
+                scalar    = volume.GetMasterVolumeLevelScalar()
+                return round(scalar * 100)
+            except Exception as exc:
+                self.log.warning("pycaw volume get failed: %s", exc)
+        return None
 
     def beep(self, pattern: str = "startup") -> None:
         """Play a beep pattern via the Windows audio device.

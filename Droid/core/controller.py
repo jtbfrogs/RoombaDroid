@@ -233,6 +233,15 @@ class DroidController:
         if self._voice:
             self._voice.calibrate()
 
+        # Set system volume from config if specified
+        if self._voice:
+            vol = config.get("voice.system_volume")
+            if vol is not None:
+                self._voice.set_system_volume(int(vol))
+            current = self._voice.get_system_volume()
+            if current is not None:
+                self.log.info("Voice  : system volume is %d%%", current)
+
         # Beep test - confirms audio device works independent of TTS
         if self._voice:
             self._voice.beep("startup")

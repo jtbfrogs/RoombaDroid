@@ -69,6 +69,7 @@ class Config:
                 "tts_rate": 230,
                 "tts_volume": 1.0,
                 "language": "en-US",
+                "system_volume": 90,
             },
             "llm": {
                 "model": "neural-chat",
