@@ -65,7 +65,7 @@ class Config:
             },
             "voice": {
                 "recognizer_energy_threshold": 300,
-                "recognizer_pause_threshold": 2.3,
+                "recognizer_pause_threshold": 0.8,
                 "tts_rate": 230,
                 "tts_volume": 1.0,
                 "language": "en-US",
@@ -79,7 +79,7 @@ class Config:
                 "govee_device_id": "",
             },
             "performance": {
-                "worker_threads": 3,
+                "worker_threads": 5,
                 "command_queue_size": 50,
                 "enable_profiling": False,
             },

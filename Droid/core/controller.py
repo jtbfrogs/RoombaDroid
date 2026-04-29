@@ -175,8 +175,10 @@ class DroidController:
             self.voice.speak("okay")
         else:
             self.log.info("No command match - sending to LLM")
-            response = self.voice.get_response(text)
-            self.voice.speak(response)
+            # Submit to worker pool so the listen loop is not blocked
+            # for the duration of the LLM response (~28 s on slow hardware).
+            # get_response() streams and speaks internally; we don't wait.
+            self.worker_pool.submit(self.voice.get_response, text)
 
         self.state_machine.transition(DroidState.IDLE)
 
@@ -223,6 +225,10 @@ class DroidController:
             self.log.info("Voice  : TTS + STT ready")
         else:
             self.log.warning("Voice  : TTS or STT not available")
+
+        # Calibrate microphone for current ambient noise level
+        if self._voice:
+            self._voice.calibrate()
 
         self.log.info("Hardware initialization complete")
 

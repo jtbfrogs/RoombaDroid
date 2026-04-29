@@ -23,8 +23,9 @@ class VoiceProcessor:
 
     * ``listen()``        -  blocks until speech is heard (or timeout).
     * ``speak()``         -  fires-and-forgets; returns immediately.
-    * ``get_response()``  -  queries the local Ollama LLM.
+    * ``get_response()``  -  streams LLM reply, speaking sentences as they arrive.
     * ``parse_command()`` -  maps plain-language phrases to movement commands.
+    * ``calibrate()``     -  calibrates microphone for ambient noise.
     """
 
     _COMMAND_MAP: Dict[str, List[str]] = {
@@ -54,11 +55,10 @@ class VoiceProcessor:
     def __init__(self) -> None:
         self.log = logger.get_logger("VoiceProcessor")
 
-        self._recognizer  = self._init_recognizer()
+        self._recognizer = self._init_recognizer()
 
         # TTS: pyttsx3 on Windows (SAPI5) uses a COM Single-Threaded
-        # Apartment - the engine must be created AND used in the same
-        # thread.  We spin up a dedicated worker and let it do the init.
+        # Apartment - the engine must be created AND used in the same thread.
         self._engine: Optional[pyttsx3.Engine] = None
         self._tts_queue: queue.Queue = queue.Queue()
         self._tts_ready = threading.Event()
@@ -68,11 +68,13 @@ class VoiceProcessor:
         if not self._tts_ready.wait(timeout=5.0):
             self.log.warning("TTS engine did not initialise within 5 s")
 
-        self.llm_model     = config.get("llm.model")
-        self._llm = self._init_llm()
+        self.llm_model = config.get("llm.model")
+        self._llm      = self._init_llm()
+
         self.system_prompt = self._build_system_prompt()
 
         self.chat_history: List[Dict] = []
+        self._history_lock = threading.Lock()   # guards chat_history across threads
         self._history_file = Path("data/chat_history.json")
         self._load_history()
 
@@ -85,19 +87,16 @@ class VoiceProcessor:
             rec = sr.Recognizer()
             rec.energy_threshold      = config.get("voice.recognizer_energy_threshold", 300)
             rec.dynamic_energy_threshold = True
-            rec.pause_threshold       = config.get("voice.recognizer_pause_threshold", 2.3)
+            # How long of silence counts as end-of-phrase.
+            # Default 2.3 s is too slow; 0.8 s feels natural.
+            rec.pause_threshold = config.get("voice.recognizer_pause_threshold", 0.8)
             return rec
         except Exception as exc:
             self.log.error("Recognizer init failed: %s", exc)
             return None
 
     def _tts_worker(self) -> None:
-        """Owns pyttsx3 exclusively: initialises the engine here, then
-        processes every speak request from _tts_queue in this same thread.
-
-        This is required on Windows where the SAPI5 driver creates a COM
-        STA object that must not be called from any other thread.
-        """
+        """Owns pyttsx3 exclusively - init and all calls happen in this thread."""
         try:
             engine = pyttsx3.init()
             voices = engine.getProperty("voices")
@@ -109,22 +108,20 @@ class VoiceProcessor:
         except Exception as exc:
             self.log.error("TTS init failed: %s", exc)
         finally:
-            self._tts_ready.set()   # unblock __init__ regardless of outcome
+            self._tts_ready.set()
 
         if self._engine is None:
             return
 
         while True:
             text = self._tts_queue.get()
-            if text is None:        # shutdown sentinel
+            if text is None:
                 break
             try:
                 self._engine.say(text)
                 self._engine.runAndWait()
             except RuntimeError as exc:
                 if "run loop already started" in str(exc):
-                    # SAPI5/comtypes left _inLoop=True after a previous
-                    # error; reset it and retry once.
                     try:
                         self._engine.endLoop()
                         self._engine.say(text)
@@ -137,8 +134,8 @@ class VoiceProcessor:
                 self.log.error("TTS error: %s", exc)
 
     def stop(self) -> None:
-        """Shut down the TTS worker and wait for any in-progress speech."""
-        self._tts_queue.put(None)  # sentinel wakes and exits the worker
+        """Shut down the TTS worker."""
+        self._tts_queue.put(None)
 
     def _init_llm(self) -> Optional["OllamaClient"]:
         if not _OLLAMA:
@@ -146,10 +143,7 @@ class VoiceProcessor:
             return None
         try:
             client = OllamaClient()
-            # Probe the server - creating OllamaClient() alone does not
-            # open a connection, so this is the only reliable way to
-            # confirm Ollama is actually running before we claim it is.
-            client.list()
+            client.list()   # actual probe - constructor alone makes no connection
             self.log.info("[OK] Ollama running (model: %s)", self.llm_model)
             return client
         except Exception as exc:
@@ -171,6 +165,31 @@ class VoiceProcessor:
         )
 
     # ------------------------------------------------------------------
+    # Microphone calibration
+    # ------------------------------------------------------------------
+
+    def calibrate(self, duration: float = 1.0) -> None:
+        """Calibrate energy threshold for the current ambient noise level.
+
+        Call once at startup before the listen loop begins.  Reads the
+        microphone for *duration* seconds and adjusts the recognizer's
+        energy_threshold accordingly so soft speech isn't missed and
+        background noise doesn't trigger false positives.
+        """
+        if not self._recognizer:
+            return
+        try:
+            with sr.Microphone() as source:
+                self.log.info("Calibrating microphone for ambient noise (%.1fs)...", duration)
+                self._recognizer.adjust_for_ambient_noise(source, duration=duration)
+                self.log.info(
+                    "[OK] Microphone calibrated (energy threshold: %.0f)",
+                    self._recognizer.energy_threshold,
+                )
+        except Exception as exc:
+            self.log.warning("Microphone calibration failed: %s", exc)
+
+    # ------------------------------------------------------------------
     # Speech output
     # ------------------------------------------------------------------
 
@@ -189,17 +208,14 @@ class VoiceProcessor:
         if not self._recognizer:
             self.log.warning("Recognizer not available")
             return None
-
         try:
             with sr.Microphone() as source:
                 self.log.debug("Listening (timeout=%.1fs)...", timeout)
                 audio = self._recognizer.listen(
                     source, timeout=timeout, phrase_time_limit=10
                 )
-            text = self._recognizer.recognize_google(audio)
-            return text
+            return self._recognizer.recognize_google(audio)
         except sr.WaitTimeoutError:
-            # Normal - no speech detected before the timeout expired.
             self.log.debug("No speech detected within %.1fs", timeout)
         except sr.UnknownValueError:
             self.log.debug("Could not understand audio")
@@ -214,38 +230,70 @@ class VoiceProcessor:
     # ------------------------------------------------------------------
 
     def get_response(self, user_input: str) -> str:
-        """Query the LLM and return a personality-driven reply."""
+        """Stream an LLM reply, speaking each sentence as it arrives.
+
+        Using stream=True means the droid starts speaking after the first
+        sentence (~2-3 s) rather than waiting for the full response (~28 s).
+        The full reply text is returned and saved to chat history.
+        """
         if not self._llm:
+            self.speak("I cannot think right now.")
             return "I cannot think right now."
 
         try:
             messages = [
-                {"role": "system",    "content": self.system_prompt},
+                {"role": "system", "content": self.system_prompt},
                 *self.chat_history[-10:],
-                {"role": "user",      "content": user_input},
+                {"role": "user",   "content": user_input},
             ]
-            raw = self._llm.chat(model=self.llm_model, messages=messages, stream=False)
 
-            # Support both dict-style and object-style Ollama responses
-            if isinstance(raw, dict):
-                reply = raw.get("message", {}).get("content", "")
-            else:
-                reply = getattr(getattr(raw, "message", None), "content", "")
-            reply = reply.strip() or "I... I don't know."
+            stream = self._llm.chat(
+                model=self.llm_model, messages=messages, stream=True
+            )
 
-            self.chat_history.append({"role": "user",      "content": user_input})
-            self.chat_history.append({"role": "assistant", "content": reply})
+            full_response = ""
+            buffer = ""
 
-            # Keep history bounded at 100 messages
-            if len(self.chat_history) > 100:
-                self.chat_history = self.chat_history[-100:]
+            for chunk in stream:
+                # Support both dict-style and object-style Ollama responses
+                if isinstance(chunk, dict):
+                    token = chunk.get("message", {}).get("content", "") or ""
+                else:
+                    token = getattr(getattr(chunk, "message", None), "content", "") or ""
+
+                if not token:
+                    continue
+
+                full_response += token
+                buffer += token
+
+                # Speak at natural sentence boundaries.
+                # Require at least 8 chars so we don't speak tiny fragments.
+                stripped = buffer.rstrip()
+                if stripped and stripped[-1] in ".!?" and len(stripped) >= 8:
+                    self.speak(buffer.strip())
+                    buffer = ""
+
+            # Speak any trailing text that didn't end with punctuation
+            if buffer.strip():
+                self.speak(buffer.strip())
+
+            reply = full_response.strip() or "I... I don't know."
+
+            with self._history_lock:
+                self.chat_history.append({"role": "user",      "content": user_input})
+                self.chat_history.append({"role": "assistant", "content": reply})
+                if len(self.chat_history) > 100:
+                    self.chat_history = self.chat_history[-100:]
 
             self._save_history()
             return reply
 
         except Exception as exc:
             self.log.warning("LLM unavailable: %s", exc)
-            return "I... cannot think right now."
+            reply = "I... cannot think right now."
+            self.speak(reply)
+            return reply
 
     # ------------------------------------------------------------------
     # Command parsing
@@ -267,7 +315,8 @@ class VoiceProcessor:
         try:
             if self._history_file.exists():
                 with self._history_file.open() as f:
-                    self.chat_history = json.load(f)
+                    with self._history_lock:
+                        self.chat_history = json.load(f)
                 self.log.info("Loaded %d history entries", len(self.chat_history))
         except Exception as exc:
             self.log.warning("Could not load chat history: %s", exc)
@@ -275,7 +324,9 @@ class VoiceProcessor:
     def _save_history(self) -> None:
         try:
             self._history_file.parent.mkdir(parents=True, exist_ok=True)
+            with self._history_lock:
+                data = list(self.chat_history)
             with self._history_file.open("w") as f:
-                json.dump(self.chat_history, f)
+                json.dump(data, f)
         except Exception as exc:
             self.log.error("Could not save chat history: %s", exc)
