@@ -9,8 +9,12 @@ from utils.config import config
 
 try:
     import mediapipe as mp
-    _MEDIAPIPE = True
+    # mediapipe >= 0.10 on Windows dropped the legacy solutions API.
+    # Resolve this once at import time so the constructor never has to
+    # warn about it on every startup.
+    _MEDIAPIPE = hasattr(mp, 'solutions')
 except ImportError:
+    mp = None
     _MEDIAPIPE = False
 
 
@@ -50,25 +54,19 @@ class VisionProcessor:
         self._pose_detector = None
         self._face_detector = None
         if _MEDIAPIPE:
-            if not hasattr(mp, 'solutions'):
-                self.log.warning(
-                    "MediaPipe installed but solutions API unavailable "
-                    "(version too new)  -  using cascade only"
+            conf = config.get("vision.min_detection_confidence", 0.5)
+            try:
+                self._pose_detector = mp.solutions.pose.Pose(
+                    min_detection_confidence=conf
                 )
-            else:
-                conf = config.get("vision.min_detection_confidence", 0.5)
-                try:
-                    self._pose_detector = mp.solutions.pose.Pose(
-                        min_detection_confidence=conf
-                    )
-                    self._face_detector = mp.solutions.face_detection.FaceDetection(
-                        min_detection_confidence=conf
-                    )
-                    self.log.info("[OK] MediaPipe detectors loaded")
-                except Exception as exc:
-                    self.log.warning(
-                        "MediaPipe init failed (%s)  -  using cascade only", exc
-                    )
+                self._face_detector = mp.solutions.face_detection.FaceDetection(
+                    min_detection_confidence=conf
+                )
+                self.log.info("[OK] MediaPipe detectors loaded")
+            except Exception as exc:
+                self.log.warning(
+                    "MediaPipe init failed (%s)  -  using cascade only", exc
+                )
 
         self._init_camera()
 
