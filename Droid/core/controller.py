@@ -177,6 +177,35 @@ class DroidController:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def initialize(self) -> None:
+        """Eagerly initialize all hardware modules and log their status.
+
+        Call this once after start().  Without it, modules are only
+        initialized on first use (lazy), so nothing happens until a
+        command references them.
+        """
+        self.log.info("Initializing hardware...")
+
+        # Roomba
+        if self.roomba:
+            self.log.info("Roomba : connected on %s", self._roomba.uart_port)
+        else:
+            self.log.warning("Roomba : not connected  -  movement disabled")
+
+        # Vision
+        if self.vision:
+            self.log.info("Vision : camera ready")
+        else:
+            self.log.warning("Vision : camera not available")
+
+        # Voice (already loaded by start())
+        if self._voice and self._voice._engine:
+            self.log.info("Voice  : TTS + STT ready")
+        else:
+            self.log.warning("Voice  : TTS or STT not available")
+
+        self.log.info("Hardware initialization complete")
+
     def start(self) -> None:
         """Start the worker pool and announce readiness."""
         if self.running:

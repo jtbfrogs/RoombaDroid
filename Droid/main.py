@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.logger import logger as log_manager
 from core.controller import DroidController
+from core.state_machine import DroidState
 
 _BANNER = """
 +------------------------------------------------------------+
@@ -35,12 +36,11 @@ def main() -> None:
     def shutdown(sig=None, frame=None) -> None:
         """Handle Ctrl-C / SIGINT cleanly."""
         if shutdown_requested.is_set():
-            return  # already shutting down
+            return
         shutdown_requested.set()
         print("\n[!] Shutting down...")
 
         if droid:
-            # Force-exit if graceful shutdown stalls after 3 s
             def force_exit() -> None:
                 time.sleep(3)
                 print("[!] Force exit triggered")
@@ -58,14 +58,32 @@ def main() -> None:
     signal.signal(signal.SIGINT, shutdown)
 
     try:
+        # --- Boot sequence ---
         droid = DroidController()
-        droid.start()
+        droid.start()           # starts worker pool, loads voice, greets
+        droid.initialize()      # eagerly loads roomba + vision, logs status
+
         log.info("Droid ready. Press Ctrl+C to shut down.")
 
+        # --- Main loop ---
+        # The droid listens for voice commands when idle.  listen() is a
+        # blocking call (up to the configured timeout) so the loop sleeps
+        # naturally while waiting for speech rather than busy-spinning.
         while droid.running and not shutdown_requested.is_set():
             try:
-                droid.process_commands(timeout=0.1)
+                # Drain any pending commands first (movement, speak, etc.)
+                droid.process_commands(timeout=0.05)
+
+                # When idle with nothing queued, listen for a voice command.
+                if (
+                    droid.voice
+                    and droid.state_machine.is_in_state(DroidState.IDLE)
+                    and droid.command_queue.size() == 0
+                ):
+                    droid.listen(timeout=5.0)
+
                 time.sleep(0.05)
+
             except Exception as exc:
                 log.error("Main loop error: %s", exc)
 
