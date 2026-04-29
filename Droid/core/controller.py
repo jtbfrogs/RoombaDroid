@@ -169,7 +169,9 @@ class DroidController:
 
     def _return_to_idle(self, delay: float = 0.5) -> None:
         time.sleep(delay)
-        self.state_machine.transition(DroidState.IDLE)
+        # Guard against the system having shut down during the delay.
+        if self.running:
+            self.state_machine.transition(DroidState.IDLE)
 
     # ------------------------------------------------------------------
     # Lifecycle

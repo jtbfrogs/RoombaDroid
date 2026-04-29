@@ -39,9 +39,20 @@ class VoiceProcessor:
         self.log = logger.get_logger("VoiceProcessor")
 
         self._recognizer  = self._init_recognizer()
+
+        # TTS: pyttsx3 on Windows (SAPI5) uses a COM Single-Threaded
+        # Apartment - the engine must be created AND used in the same
+        # thread.  We spin up a dedicated worker and let it do the init.
+        self._engine: Optional[pyttsx3.Engine] = None
         self._tts_queue: queue.Queue = queue.Queue()
-        self._engine      = self._init_tts()
-        self._llm         = self._init_llm()
+        self._tts_ready = threading.Event()
+        threading.Thread(
+            target=self._tts_worker, daemon=True, name="TTSWorker"
+        ).start()
+        if not self._tts_ready.wait(timeout=5.0):
+            self.log.warning("TTS engine did not initialise within 5 s")
+
+        self._llm = self._init_llm()
 
         self.llm_model     = config.get("llm.model", "neural-chat")
         self.system_prompt = self._build_system_prompt()
@@ -65,7 +76,13 @@ class VoiceProcessor:
             self.log.error("Recognizer init failed: %s", exc)
             return None
 
-    def _init_tts(self) -> Optional[pyttsx3.Engine]:
+    def _tts_worker(self) -> None:
+        """Owns pyttsx3 exclusively: initialises the engine here, then
+        processes every speak request from _tts_queue in this same thread.
+
+        This is required on Windows where the SAPI5 driver creates a COM
+        STA object that must not be called from any other thread.
+        """
         try:
             engine = pyttsx3.init()
             voices = engine.getProperty("voices")
@@ -73,27 +90,18 @@ class VoiceProcessor:
                 engine.setProperty("voice", voices[0].id)
             engine.setProperty("rate",   config.get("voice.tts_rate", 230))
             engine.setProperty("volume", config.get("voice.tts_volume", 1.0))
-            # Dedicated worker thread: pyttsx3 on Windows (SAPI5) must have
-            # runAndWait() called from the same thread every time, otherwise
-            # it throws 'run loop already started'.
-            t = threading.Thread(
-                target=self._tts_worker, daemon=True, name="TTSWorker"
-            )
-            t.start()
-            return engine
+            self._engine = engine
         except Exception as exc:
             self.log.error("TTS init failed: %s", exc)
-            return None
+        finally:
+            self._tts_ready.set()   # unblock __init__ regardless of outcome
 
-    def _tts_worker(self) -> None:
-        """Single thread that owns all pyttsx3 calls.
+        if self._engine is None:
+            return
 
-        Pulling from _tts_queue and calling runAndWait() here (and only
-        here) prevents the 'run loop already started' error on Windows.
-        """
         while True:
             text = self._tts_queue.get()
-            if text is None:      # shutdown sentinel
+            if text is None:        # shutdown sentinel
                 break
             try:
                 self._engine.say(text)
