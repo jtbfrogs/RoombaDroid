@@ -1,5 +1,6 @@
 """Speech recognition, TTS output, and LLM-backed conversation."""
 import json
+import queue
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -38,9 +39,9 @@ class VoiceProcessor:
         self.log = logger.get_logger("VoiceProcessor")
 
         self._recognizer  = self._init_recognizer()
+        self._tts_queue: queue.Queue = queue.Queue()
         self._engine      = self._init_tts()
         self._llm         = self._init_llm()
-        self._speak_lock  = threading.Lock()
 
         self.llm_model     = config.get("llm.model", "neural-chat")
         self.system_prompt = self._build_system_prompt()
@@ -72,10 +73,33 @@ class VoiceProcessor:
                 engine.setProperty("voice", voices[0].id)
             engine.setProperty("rate",   config.get("voice.tts_rate", 230))
             engine.setProperty("volume", config.get("voice.tts_volume", 1.0))
+            # Dedicated worker thread: pyttsx3 on Windows (SAPI5) must have
+            # runAndWait() called from the same thread every time, otherwise
+            # it throws 'run loop already started'.
+            t = threading.Thread(
+                target=self._tts_worker, daemon=True, name="TTSWorker"
+            )
+            t.start()
             return engine
         except Exception as exc:
             self.log.error("TTS init failed: %s", exc)
             return None
+
+    def _tts_worker(self) -> None:
+        """Single thread that owns all pyttsx3 calls.
+
+        Pulling from _tts_queue and calling runAndWait() here (and only
+        here) prevents the 'run loop already started' error on Windows.
+        """
+        while True:
+            text = self._tts_queue.get()
+            if text is None:      # shutdown sentinel
+                break
+            try:
+                self._engine.say(text)
+                self._engine.runAndWait()
+            except Exception as exc:
+                self.log.error("TTS error: %s", exc)
 
     def _init_llm(self) -> Optional["OllamaClient"]:
         if not _OLLAMA:
@@ -105,19 +129,10 @@ class VoiceProcessor:
     # ------------------------------------------------------------------
 
     def speak(self, text: str) -> None:
-        """Speak *text* asynchronously; returns immediately."""
+        """Queue *text* for speaking; returns immediately."""
         if not text or not text.strip() or not self._engine:
             return
-
-        def _run() -> None:
-            with self._speak_lock:
-                try:
-                    self._engine.say(text)
-                    self._engine.runAndWait()
-                except Exception as exc:
-                    self.log.error("TTS error: %s", exc)
-
-        threading.Thread(target=_run, daemon=True, name="SpeakThread").start()
+        self._tts_queue.put(text)
 
     # ------------------------------------------------------------------
     # Speech input
