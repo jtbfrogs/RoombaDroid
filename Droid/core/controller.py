@@ -192,8 +192,10 @@ class DroidController:
         else:
             self.log.warning("Roomba : not connected  -  movement disabled")
 
-        # Vision
-        if self.vision:
+        # Vision - check _cap directly: the VisionProcessor object may
+        # exist even if the camera failed to open (no exception is raised,
+        # _cap is just set to None).
+        if self.vision and self._vision._cap is not None:
             self.log.info("Vision : camera ready")
         else:
             self.log.warning("Vision : camera not available")

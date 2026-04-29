@@ -177,6 +177,9 @@ class VoiceProcessor:
             text = self._recognizer.recognize_google(audio)
             self.log.info("Heard: %s", text)
             return text
+        except sr.WaitTimeoutError:
+            # Normal - no speech detected before the timeout expired.
+            self.log.debug("No speech detected within %.1fs", timeout)
         except sr.UnknownValueError:
             self.log.debug("Could not understand audio")
         except sr.RequestError as exc:
