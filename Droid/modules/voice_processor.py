@@ -3,6 +3,7 @@ import json
 import queue
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -79,9 +80,11 @@ class VoiceProcessor:
         self._tts_ready = threading.Event()
         self._tts_pending = 0                      # items queued or currently speaking
         self._tts_pending_lock = threading.Lock()  # guards _tts_pending
-        threading.Thread(
+        self._tts_last_speak = 0.0                 # monotonic time of last speak() call
+        self._tts_thread = threading.Thread(
             target=self._tts_worker, daemon=True, name="TTSWorker"
-        ).start()
+        )
+        self._tts_thread.start()
         if not self._tts_ready.wait(timeout=5.0):
             self.log.warning("TTS engine did not initialise within 5 s")
 
@@ -215,6 +218,12 @@ class VoiceProcessor:
                     self.log.error("TTS error: %s", exc)
             except Exception as exc:
                 self.log.error("TTS error: %s", exc)
+            except BaseException as exc:
+                # Log fatal errors (SystemExit, etc.) then re-raise.
+                # The finally block below still runs before the thread exits,
+                # so the counter is always decremented exactly once.
+                self.log.error("TTS worker fatal error: %s", exc)
+                raise
             finally:
                 # Decrement pending count regardless of success/failure so
                 # is_speaking() doesn't get stuck True after an error.
@@ -434,10 +443,42 @@ class VoiceProcessor:
     # Speech output
     # ------------------------------------------------------------------
 
+    _TTS_MAX_SPEAKING_SECS = 30.0  # safety valve: never block listen longer than this
+
     def is_speaking(self) -> bool:
-        """Return True while TTS has items queued or is actively speaking."""
+        """Return True while TTS has items queued or is actively speaking.
+
+        Returns False immediately if:
+        * the pending counter is already zero, OR
+        * the TTS worker thread has died (pyttsx3 crash), OR
+        * TTS has been "speaking" for longer than _TTS_MAX_SPEAKING_SECS
+          (guards against pyttsx3 runAndWait() hanging indefinitely).
+        """
         with self._tts_pending_lock:
-            return self._tts_pending > 0
+            if self._tts_pending <= 0:
+                return False
+
+            # Worker thread died - it can't finish what's queued; reset.
+            if not self._tts_thread.is_alive():
+                self.log.warning(
+                    "TTS worker thread is dead; resetting pending counter"
+                )
+                self._tts_pending = 0
+                return False
+
+            # Safety valve: pyttsx3 runAndWait() can hang on Windows SAPI5.
+            # If we've been "speaking" longer than the limit, unblock the
+            # listen loop so the droid doesn't freeze forever.
+            elapsed = time.monotonic() - self._tts_last_speak
+            if elapsed > self._TTS_MAX_SPEAKING_SECS:
+                self.log.warning(
+                    "TTS appears stuck (%.0f s); resetting pending counter",
+                    elapsed,
+                )
+                self._tts_pending = 0
+                return False
+
+            return True
 
     def speak(self, text: str) -> None:
         """Queue *text* for speaking; returns immediately."""
@@ -453,6 +494,7 @@ class VoiceProcessor:
         if clean:
             with self._tts_pending_lock:
                 self._tts_pending += 1
+                self._tts_last_speak = time.monotonic()
             self._tts_queue.put(clean)
 
     # ------------------------------------------------------------------
