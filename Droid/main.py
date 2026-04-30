@@ -75,10 +75,15 @@ def main() -> None:
                 droid.process_commands(timeout=0.05)
 
                 # When idle with nothing queued, listen for a voice command.
+                # Do NOT open the microphone while TTS is active: on shared-
+                # device audio setups the mic picks up the speaker output and
+                # sends it back to Google STT, creating an infinite loop.  On
+                # exclusive-mode devices the TTS write fails silently.
                 if (
                     droid.voice
                     and droid.state_machine.is_in_state(DroidState.IDLE)
                     and droid.command_queue.size() == 0
+                    and not droid.voice.is_speaking()
                 ):
                     droid.listen(timeout=5.0)
 

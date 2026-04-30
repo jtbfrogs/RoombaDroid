@@ -1,6 +1,7 @@
 """Speech recognition, TTS output, and LLM-backed conversation."""
 import json
 import queue
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -76,6 +77,8 @@ class VoiceProcessor:
         self._engine: Optional[pyttsx3.Engine] = None
         self._tts_queue: queue.Queue = queue.Queue()
         self._tts_ready = threading.Event()
+        self._tts_pending = 0                      # items queued or currently speaking
+        self._tts_pending_lock = threading.Lock()  # guards _tts_pending
         threading.Thread(
             target=self._tts_worker, daemon=True, name="TTSWorker"
         ).start()
@@ -212,6 +215,11 @@ class VoiceProcessor:
                     self.log.error("TTS error: %s", exc)
             except Exception as exc:
                 self.log.error("TTS error: %s", exc)
+            finally:
+                # Decrement pending count regardless of success/failure so
+                # is_speaking() doesn't get stuck True after an error.
+                with self._tts_pending_lock:
+                    self._tts_pending = max(0, self._tts_pending - 1)
 
     def stop(self) -> None:
         """Shut down the TTS worker."""
@@ -426,15 +434,25 @@ class VoiceProcessor:
     # Speech output
     # ------------------------------------------------------------------
 
+    def is_speaking(self) -> bool:
+        """Return True while TTS has items queued or is actively speaking."""
+        with self._tts_pending_lock:
+            return self._tts_pending > 0
+
     def speak(self, text: str) -> None:
         """Queue *text* for speaking; returns immediately."""
-        if not text or not text.strip() or not self._engine:
+        if not text or not text.strip():
+            return
+        if not self._engine:
+            self.log.warning("TTS engine not available - dropping speech: %s", text[:60])
             return
         # Strip non-ASCII characters (emoji, symbols) before sending to
         # pyttsx3/SAPI5.  On Windows, SAPI5 silently drops the entire
         # utterance if it encounters characters it cannot pronounce.
         clean = text.encode("ascii", errors="ignore").decode("ascii").strip()
         if clean:
+            with self._tts_pending_lock:
+                self._tts_pending += 1
             self._tts_queue.put(clean)
 
     # ------------------------------------------------------------------
@@ -557,11 +575,34 @@ class VoiceProcessor:
     # Command parsing
     # ------------------------------------------------------------------
 
+    # Pre-compiled word-boundary patterns for each command phrase.
+    # Using (?<![\w]) / (?![\w]) instead of \b so multi-word phrases like
+    # "go forward" match correctly, and short words like "move" don't
+    # accidentally match inside "remove" or "movement".
+    _COMMAND_PATTERNS: Dict[str, list] = {}  # populated on first use
+
+    @classmethod
+    def _get_command_patterns(cls) -> Dict[str, list]:
+        if not cls._COMMAND_PATTERNS:
+            for cmd, phrases in cls._COMMAND_MAP.items():
+                cls._COMMAND_PATTERNS[cmd] = [
+                    re.compile(
+                        r"(?<![\w])" + re.escape(p) + r"(?![\w])",
+                        re.IGNORECASE,
+                    )
+                    for p in phrases
+                ]
+        return cls._COMMAND_PATTERNS
+
     def parse_command(self, text: str) -> Optional[str]:
-        """Return a movement keyword if a known phrase is found in *text*."""
-        lower = text.lower()
-        for cmd, phrases in self._COMMAND_MAP.items():
-            if any(p in lower for p in phrases):
+        """Return a movement keyword if a known phrase is found in *text*.
+
+        Uses word-boundary regex matching so short keywords like ``move``
+        don't fire inside unrelated words such as ``remove`` or ``movement``.
+        """
+        patterns = self._get_command_patterns()
+        for cmd, compiled in patterns.items():
+            if any(p.search(text) for p in compiled):
                 return cmd
         return None
 
