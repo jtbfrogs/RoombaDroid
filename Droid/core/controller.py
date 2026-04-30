@@ -83,6 +83,15 @@ class DroidController:
                 self.log.error("Roomba init failed: %s", exc)
                 self._roomba_failed = True
                 return None
+            # _connect() swallows serial errors and just sets connected=False,
+            # so the constructor never raises.  Treat a failed connection as a
+            # permanent failure so callers aren't silently dropped forever.
+            if not self._roomba.connected:
+                self.log.error(
+                    "Roomba init failed: could not open serial port (connected=False)"
+                )
+                self._roomba_failed = True
+                return None
         return self._roomba if self._roomba.connected else None
 
     @property
@@ -194,6 +203,12 @@ class DroidController:
         time.sleep(delay)
         # Guard against the system having shut down during the delay.
         if self.running:
+            # Explicitly stop the Roomba hardware before transitioning the
+            # state machine.  Without this the wheels keep turning until the
+            # 2-second watchdog fires, and the watchdog timer can be reset by
+            # a new command that arrives while state is already IDLE.
+            if self._roomba and self._roomba.connected:
+                self._roomba.send_command("STOP")
             self.state_machine.transition(DroidState.IDLE)
 
     # ------------------------------------------------------------------

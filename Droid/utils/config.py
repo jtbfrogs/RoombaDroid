@@ -47,7 +47,7 @@ class Config:
             "roomba": {
                 "uart_port": "COM7",
                 "baud_rate": 115200,
-                "use_rts_cts": True,
+                "use_rts_cts": False,
                 "wakeup_wait_time": 0.5,
                 "velocity": 200,
                 "spin_velocity": 100,
