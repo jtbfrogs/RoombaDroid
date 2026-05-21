@@ -1,0 +1,12 @@
+[project]
+name = "droid"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "opencv-contrib-python>=4.13.0.92",
+    "pyttsx3>=2.99",
+    "serial>=0.0.97",
+    "speechrecognition>=3.16.1",
+]
